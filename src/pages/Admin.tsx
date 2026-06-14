@@ -1,0 +1,655 @@
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { LogIn, Lock, Eye, EyeOff, LayoutDashboard, Image, BookOpen, Newspaper, FileText, Settings, Save, Trash2, Plus, X, CheckCircle, AlertTriangle, Award } from "lucide-react";
+import { getStore, setStore } from "../data/store";
+
+const SECTIONS = [
+  { id: "offers", label: "Offer Images", icon: Image },
+  { id: "instagram", label: "Instagram Images", icon: Image },
+  { id: "courses", label: "Courses", icon: BookOpen },
+  { id: "popup", label: "Popup Ad", icon: Image },
+  { id: "news", label: "News", icon: Newspaper },
+  { id: "study", label: "Study Material", icon: FileText },
+  { id: "scholarship", label: "Scholarship", icon: Settings },
+  { id: "recognition", label: "Recognition Docs", icon: Award },
+  { id: "content", label: "Page Content", icon: FileText },
+];
+
+export default function Admin() {
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [activeSection, setActiveSection] = useState("offers");
+  const [store, setLocalStore] = useState(getStore());
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    const session = sessionStorage.getItem("nitya_admin_session");
+    if (session === "active") setLoggedIn(true);
+  }, []);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (username === "thenityaacademy@gmail.com" && password === "Redhat@123") {
+      setLoggedIn(true);
+      sessionStorage.setItem("nitya_admin_session", "active");
+      setLoginError("");
+    } else {
+      setLoginError("Invalid username or password");
+    }
+  };
+
+  const handleSave = (data: Record<string, unknown>) => {
+    const updated = setStore(data);
+    setLocalStore(updated);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  if (!loggedIn) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="bg-white rounded-3xl card-shadow p-8 lg:p-12 w-full max-w-md border border-slate-100"
+        >
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-primary-light rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Lock size={28} className="text-primary" />
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900">Admin Login</h1>
+            <p className="text-slate-500 text-sm mt-1">Nitya Academy Dashboard</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Username</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm"
+                placeholder="Enter username"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm pr-12"
+                  placeholder="Enter password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+            {loginError && (
+              <div className="flex items-center gap-2 text-red-500 text-sm">
+                <AlertTriangle size={16} />
+                {loginError}
+              </div>
+            )}
+            <button type="submit" className="w-full pill-btn-primary py-3.5">
+              <LogIn size={18} className="mr-2" /> Login
+            </button>
+          </form>
+
+          <div className="mt-6 pt-6 border-t border-slate-100 text-center">
+            <p className="text-xs text-slate-400">
+              Reset Password: Security ID "Bhadra Center Name: BINT BHADRA"
+            </p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {/* Admin Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <LayoutDashboard size={24} className="text-primary" />
+            <h1 className="font-bold text-slate-900">Admin Dashboard</h1>
+          </div>
+          <button
+            onClick={() => {
+              sessionStorage.removeItem("nitya_admin_session");
+              setLoggedIn(false);
+            }}
+            className="text-sm text-slate-500 hover:text-red-500 transition-colors"
+          >
+            Logout
+          </button>
+        </div>
+      </header>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid lg:grid-cols-4 gap-8">
+          {/* Sidebar */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-2xl card-shadow border border-slate-100 overflow-hidden">
+              {SECTIONS.map((section) => {
+                const Icon = section.icon;
+                return (
+                  <button
+                    key={section.id}
+                    onClick={() => setActiveSection(section.id)}
+                    className={`w-full flex items-center gap-3 px-5 py-3.5 text-left text-sm font-medium transition-colors ${
+                      activeSection === section.id
+                        ? "bg-primary text-white"
+                        : "text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Icon size={18} />
+                    {section.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <div className="lg:col-span-3">
+            {saved && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-4 flex items-center gap-2 bg-green-100 text-green-700 px-4 py-3 rounded-xl text-sm font-medium"
+              >
+                <CheckCircle size={18} /> Changes saved successfully!
+              </motion.div>
+            )}
+
+            {activeSection === "offers" && <OfferImagesAdmin store={store} onSave={handleSave} />}
+            {activeSection === "instagram" && <InstagramImagesAdmin store={store} onSave={handleSave} />}
+            {activeSection === "courses" && <CoursesAdmin store={store} onSave={handleSave} />}
+            {activeSection === "popup" && <PopupAdmin store={store} onSave={handleSave} />}
+            {activeSection === "news" && <NewsAdmin store={store} onSave={handleSave} />}
+            {activeSection === "study" && <StudyMaterialAdmin store={store} onSave={handleSave} />}
+            {activeSection === "scholarship" && <ScholarshipAdmin store={store} onSave={handleSave} />}
+            {activeSection === "recognition" && <RecognitionAdmin store={store} onSave={handleSave} />}
+            {activeSection === "content" && <ContentAdmin store={store} onSave={handleSave} />}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Admin Sub-Components
+
+function OfferImagesAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
+  const [images, setImages] = useState<string[]>(store.offerImages);
+  const [newUrl, setNewUrl] = useState("");
+
+  const add = () => {
+    if (!newUrl.trim()) return;
+    setImages([...images, newUrl]);
+    setNewUrl("");
+  };
+
+  const remove = (i: number) => {
+    setImages(images.filter((_, idx) => idx !== i));
+  };
+
+  return (
+    <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
+      <h2 className="text-xl font-bold text-slate-900 mb-6">Offer Carousel Images</h2>
+      <div className="flex gap-2 mb-6">
+        <input
+          type="text"
+          value={newUrl}
+          onChange={(e) => setNewUrl(e.target.value)}
+          placeholder="Enter image URL"
+          className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+        />
+        <button onClick={add} className="pill-btn-primary"><Plus size={18} /></button>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-4 mb-6">
+        {images.map((url, i) => (
+          <div key={i} className="relative rounded-xl overflow-hidden card-shadow group">
+            <img src={url} alt={`Offer ${i + 1}`} className="w-full h-40 object-cover" />
+            <button onClick={() => remove(i)} className="absolute top-2 right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button onClick={() => onSave({ offerImages: images })} className="pill-btn-primary">
+        <Save size={16} className="mr-2" /> Save Changes
+      </button>
+    </div>
+  );
+}
+
+function InstagramImagesAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
+  const [images, setImages] = useState<string[]>(store.instagramImages);
+  const [newUrl, setNewUrl] = useState("");
+
+  const add = () => { if (!newUrl.trim()) return; setImages([...images, newUrl]); setNewUrl(""); };
+  const remove = (i: number) => setImages(images.filter((_, idx) => idx !== i));
+
+  return (
+    <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
+      <h2 className="text-xl font-bold text-slate-900 mb-6">Instagram Carousel Images</h2>
+      <div className="flex gap-2 mb-6">
+        <input type="text" value={newUrl} onChange={(e) => setNewUrl(e.target.value)} placeholder="Enter image URL" className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm" />
+        <button onClick={add} className="pill-btn-primary"><Plus size={18} /></button>
+      </div>
+      <div className="grid sm:grid-cols-3 gap-4 mb-6">
+        {images.map((url, i) => (
+          <div key={i} className="relative rounded-xl overflow-hidden card-shadow group aspect-square">
+            <img src={url} alt={`Insta ${i + 1}`} className="w-full h-full object-cover" />
+            <button onClick={() => remove(i)} className="absolute top-2 right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14} /></button>
+          </div>
+        ))}
+      </div>
+      <button onClick={() => onSave({ instagramImages: images })} className="pill-btn-primary"><Save size={16} className="mr-2" /> Save Changes</button>
+    </div>
+  );
+}
+
+function CoursesAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
+  const [courses, setCourses] = useState(store.courses);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
+  const [showAdd, setShowAdd] = useState(false);
+  const [newCourse, setNewCourse] = useState({
+    id: "", name: "", fullName: "", description: "", duration: "", eligibility: "", category: "vocational", icon: "GraduationCap"
+  });
+
+  const startEdit = (course: Record<string, string>) => {
+    setEditing(course.id);
+    setEditForm({ ...course });
+  };
+
+  const saveEdit = () => {
+    setCourses(courses.map((c: {id: string}) => c.id === editing ? { ...c, ...editForm } : c));
+    setEditing(null);
+  };
+
+  const remove = (id: string) => {
+    setCourses(courses.filter((c: {id: string}) => c.id !== id));
+  };
+
+  const addCourse = () => {
+    if (!newCourse.id.trim() || !newCourse.name.trim()) return;
+    setCourses([...courses, { ...newCourse }]);
+    setNewCourse({ id: "", name: "", fullName: "", description: "", duration: "", eligibility: "", category: "vocational", icon: "GraduationCap" });
+    setShowAdd(false);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-bold text-slate-900">Manage Courses</h2>
+        <button onClick={() => setShowAdd(!showAdd)} className="pill-btn-primary text-xs">
+          <Plus size={14} className="mr-1" /> {showAdd ? "Cancel" : "Add Course"}
+        </button>
+      </div>
+
+      {showAdd && (
+        <div className="bg-slate-50 rounded-xl p-4 mb-6 space-y-3">
+          <h3 className="font-semibold text-slate-900 text-sm">Add New Course</h3>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <input value={newCourse.id} onChange={(e) => setNewCourse({ ...newCourse, id: e.target.value })} placeholder="Course ID (unique)" className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+            <input value={newCourse.name} onChange={(e) => setNewCourse({ ...newCourse, name: e.target.value })} placeholder="Short Name (e.g. BCA)" className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+            <input value={newCourse.fullName} onChange={(e) => setNewCourse({ ...newCourse, fullName: e.target.value })} placeholder="Full Name" className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+            <input value={newCourse.duration} onChange={(e) => setNewCourse({ ...newCourse, duration: e.target.value })} placeholder="Duration (e.g. 3 Years)" className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+            <input value={newCourse.eligibility} onChange={(e) => setNewCourse({ ...newCourse, eligibility: e.target.value })} placeholder="Eligibility" className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+            <select value={newCourse.category} onChange={(e) => setNewCourse({ ...newCourse, category: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-200 text-sm">
+              <option value="vocational">Vocational</option>
+              <option value="skill">Skill</option>
+              <option value="university">University</option>
+            </select>
+          </div>
+          <textarea value={newCourse.description} onChange={(e) => setNewCourse({ ...newCourse, description: e.target.value })} placeholder="Description" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none" rows={2} />
+          <button onClick={addCourse} className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium">Add Course</button>
+        </div>
+      )}
+
+      <div className="space-y-4 mb-6">
+        {courses.map((course: Record<string, string>) => (
+          <div key={course.id} className="border border-slate-100 rounded-xl p-4">
+            {editing === course.id ? (
+              <div className="space-y-3">
+                <input value={editForm.name || ""} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" placeholder="Name" />
+                <input value={editForm.fullName || ""} onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" placeholder="Full Name" />
+                <input value={editForm.duration || ""} onChange={(e) => setEditForm({ ...editForm, duration: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" placeholder="Duration" />
+                <input value={editForm.eligibility || ""} onChange={(e) => setEditForm({ ...editForm, eligibility: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" placeholder="Eligibility" />
+                <textarea value={editForm.description || ""} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none" rows={2} placeholder="Description" />
+                <div className="flex gap-2">
+                  <button onClick={saveEdit} className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium">Save</button>
+                  <button onClick={() => setEditing(null)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium">Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-slate-900">{course.name}</h4>
+                  <p className="text-sm text-slate-500">{course.fullName} • {course.duration}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => startEdit(course)} className="px-3 py-1.5 bg-primary-light text-primary rounded-lg text-xs font-medium">Edit</button>
+                  <button onClick={() => remove(course.id)} className="px-3 py-1.5 bg-red-50 text-red-500 rounded-lg text-xs font-medium"><Trash2 size={14} /></button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <button onClick={() => onSave({ courses })} className="pill-btn-primary"><Save size={16} className="mr-2" /> Save Changes</button>
+    </div>
+  );
+}
+
+function PopupAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
+  const [enabled, setEnabled] = useState(store.popupEnabled);
+
+  return (
+    <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
+      <h2 className="text-xl font-bold text-slate-900 mb-6">Popup Ad Settings</h2>
+      <div className="mb-6">
+        <img src="https://i.ibb.co/FR4TBgy/Chat-GPT-Image-Jun-10-2026-04-34-22-PM.png" alt="Popup" className="w-full max-w-sm rounded-xl card-shadow" />
+      </div>
+      <label className="flex items-center gap-3 mb-6">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+          className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary"
+        />
+        <span className="text-slate-700 font-medium">Enable Popup Ad</span>
+      </label>
+      <button onClick={() => onSave({ popupEnabled: enabled })} className="pill-btn-primary"><Save size={16} className="mr-2" /> Save Changes</button>
+    </div>
+  );
+}
+
+function NewsAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
+  const [news, setNews] = useState(store.news);
+  const [newItem, setNewItem] = useState({ title: "", content: "", date: new Date().toISOString().split("T")[0] });
+
+  const add = () => {
+    if (!newItem.title.trim()) return;
+    setNews([{ id: Date.now().toString(), ...newItem }, ...news]);
+    setNewItem({ title: "", content: "", date: new Date().toISOString().split("T")[0] });
+  };
+
+  const remove = (id: string) => setNews(news.filter((n: {id: string}) => n.id !== id));
+
+  return (
+    <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
+      <h2 className="text-xl font-bold text-slate-900 mb-6">Manage News</h2>
+      <div className="space-y-3 mb-6 bg-slate-50 rounded-xl p-4">
+        <input value={newItem.title} onChange={(e) => setNewItem({ ...newItem, title: e.target.value })} placeholder="News title" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+        <textarea value={newItem.content} onChange={(e) => setNewItem({ ...newItem, content: e.target.value })} placeholder="News content" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none" rows={3} />
+        <input type="date" value={newItem.date} onChange={(e) => setNewItem({ ...newItem, date: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+        <button onClick={add} className="pill-btn-primary text-xs"><Plus size={14} className="mr-1" /> Add News</button>
+      </div>
+      <div className="space-y-3 mb-6">
+        {news.map((item: {id: string; title: string; date: string}) => (
+          <div key={item.id} className="flex items-center justify-between border border-slate-100 rounded-xl p-3">
+            <div>
+              <p className="font-medium text-slate-900 text-sm">{item.title}</p>
+              <p className="text-xs text-slate-500">{item.date}</p>
+            </div>
+            <button onClick={() => remove(item.id)} className="w-8 h-8 bg-red-50 text-red-500 rounded-lg flex items-center justify-center"><Trash2 size={14} /></button>
+          </div>
+        ))}
+      </div>
+      <button onClick={() => onSave({ news })} className="pill-btn-primary"><Save size={16} className="mr-2" /> Save Changes</button>
+    </div>
+  );
+}
+
+function StudyMaterialAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
+  const [activeTab, setActiveTab] = useState("notes");
+  const [notes, setNotes] = useState(store.notes);
+  const [syllabus, setSyllabus] = useState(store.syllabus);
+  const [papers, setPapers] = useState(store.previousPapers);
+  const [newDoc, setNewDoc] = useState({ name: "", url: "" });
+
+  const getData = () => activeTab === "notes" ? notes : activeTab === "syllabus" ? syllabus : papers;
+  const setData = (d: {name: string; url: string}[]) => {
+    if (activeTab === "notes") setNotes(d);
+    else if (activeTab === "syllabus") setSyllabus(d);
+    else setPapers(d);
+  };
+
+  const add = () => {
+    if (!newDoc.name.trim() || !newDoc.url.trim()) return;
+    setData([...getData(), { ...newDoc }]);
+    setNewDoc({ name: "", url: "" });
+  };
+
+  const remove = (i: number) => {
+    setData(getData().filter((_doc: {name: string; url: string}, idx: number) => idx !== i));
+  };
+
+  const saveAll = () => {
+    onSave({ notes, syllabus, previousPapers: papers });
+  };
+
+  return (
+    <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
+      <h2 className="text-xl font-bold text-slate-900 mb-6">Manage Study Material</h2>
+      <div className="flex gap-2 mb-6">
+        {["notes", "syllabus", "previous-papers"].map((tab) => (
+          <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-full text-xs font-semibold ${activeTab === tab ? "bg-primary text-white" : "bg-slate-100 text-slate-600"}`}>
+            {tab === "previous-papers" ? "Previous Papers" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-2 mb-4">
+        <input value={newDoc.name} onChange={(e) => setNewDoc({ ...newDoc, name: e.target.value })} placeholder="Document name" className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+        <input value={newDoc.url} onChange={(e) => setNewDoc({ ...newDoc, url: e.target.value })} placeholder="URL" className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+        <button onClick={add} className="pill-btn-primary text-xs"><Plus size={14} /></button>
+      </div>
+      <div className="space-y-2 mb-6">
+        {getData().map((doc: {name: string}, i: number) => (
+          <div key={i} className="flex items-center justify-between border border-slate-100 rounded-xl p-3">
+            <span className="text-sm text-slate-700">{doc.name}</span>
+            <button onClick={() => remove(i)} className="w-8 h-8 bg-red-50 text-red-500 rounded-lg flex items-center justify-center"><Trash2 size={14} /></button>
+          </div>
+        ))}
+      </div>
+      <button onClick={saveAll} className="pill-btn-primary"><Save size={16} className="mr-2" /> Save Changes</button>
+    </div>
+  );
+}
+
+function ScholarshipAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
+  const [content, setContent] = useState(store.scholarshipContent);
+  const [endDate, setEndDate] = useState(store.scholarshipEndDate);
+
+  return (
+    <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
+      <h2 className="text-xl font-bold text-slate-900 mb-6">Scholarship Settings</h2>
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">Scholarship End Date</label>
+        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm" />
+      </div>
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">Scholarship Content</label>
+        <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={12} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none" />
+      </div>
+      <button onClick={() => onSave({ scholarshipContent: content, scholarshipEndDate: endDate })} className="pill-btn-primary"><Save size={16} className="mr-2" /> Save Changes</button>
+    </div>
+  );
+}
+
+function RecognitionAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
+  const [docs, setDocs] = useState<{name: string; url: string}[]>(store.recognitionDocs);
+  const [newDoc, setNewDoc] = useState({ name: "", url: "" });
+
+  const add = () => {
+    if (!newDoc.name.trim() || !newDoc.url.trim()) return;
+    setDocs([...docs, { ...newDoc }]);
+    setNewDoc({ name: "", url: "" });
+  };
+
+  const remove = (i: number) => {
+    setDocs(docs.filter((_, idx) => idx !== i));
+  };
+
+  return (
+    <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
+      <h2 className="text-xl font-bold text-slate-900 mb-2">Recognition Documents</h2>
+      <p className="text-sm text-slate-500 mb-6">Upload A4 size document images (recommended 2480 x 3508 pixels)</p>
+
+      <div className="flex gap-2 mb-6">
+        <input
+          type="text"
+          value={newDoc.name}
+          onChange={(e) => setNewDoc({ ...newDoc, name: e.target.value })}
+          placeholder="Document name (e.g. Registration Certificate)"
+          className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+        />
+        <input
+          type="text"
+          value={newDoc.url}
+          onChange={(e) => setNewDoc({ ...newDoc, url: e.target.value })}
+          placeholder="Image URL"
+          className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+        />
+        <button onClick={add} className="pill-btn-primary"><Plus size={18} /></button>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4 mb-6">
+        {docs.map((doc, i) => (
+          <div key={i} className="relative rounded-xl overflow-hidden card-shadow group border border-slate-100">
+            <img
+              src={doc.url}
+              alt={doc.name}
+              className="w-full aspect-[248/351] object-contain bg-slate-100"
+            />
+            <div className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm p-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-900 truncate pr-2">{doc.name}</span>
+              <button
+                onClick={() => remove(i)}
+                className="w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center shrink-0"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {docs.length === 0 && (
+        <div className="bg-slate-50 rounded-xl p-8 text-center mb-6">
+          <Award size={40} className="mx-auto text-slate-300 mb-2" />
+          <p className="text-slate-500 text-sm">No recognition documents uploaded yet.</p>
+        </div>
+      )}
+
+      <button onClick={() => onSave({ recognitionDocs: docs })} className="pill-btn-primary">
+        <Save size={16} className="mr-2" /> Save Changes
+      </button>
+    </div>
+  );
+}
+
+function ContentAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
+  const [about, setAbout] = useState(store.aboutContent);
+  const [vision, setVision] = useState(store.visionContent);
+  const [visionPoints, setVisionPoints] = useState<string[]>(store.visionPoints);
+  const [directorMsg, setDirectorMsg] = useState(store.directorMessage);
+  const [coDirectorMsg, setCoDirectorMsg] = useState(store.coDirectorMessage);
+  const [directorName, setDirectorName] = useState(store.directorName);
+  const [directorLocation, setDirectorLocation] = useState(store.directorLocation);
+  const [coDirectorName, setCoDirectorName] = useState(store.coDirectorName);
+  const [coDirectorLocation, setCoDirectorLocation] = useState(store.coDirectorLocation);
+  const [newPoint, setNewPoint] = useState("");
+
+  return (
+    <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6 space-y-6">
+      <h2 className="text-xl font-bold text-slate-900">Page Content</h2>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">About Institute</label>
+        <textarea value={about} onChange={(e) => setAbout(e.target.value)} rows={5} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none" />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">Vision Statement</label>
+        <textarea value={vision} onChange={(e) => setVision(e.target.value)} rows={4} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none" />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">Vision Points</label>
+        <div className="flex gap-2 mb-3">
+          <input value={newPoint} onChange={(e) => setNewPoint(e.target.value)} placeholder="Add new point" className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+          <button onClick={() => { if (newPoint.trim()) { setVisionPoints([...visionPoints, newPoint]); setNewPoint(""); } }} className="pill-btn-primary text-xs"><Plus size={14} /></button>
+        </div>
+        <div className="space-y-2">
+          {visionPoints.map((p, i) => (
+            <div key={i} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+              <span className="text-sm text-slate-700">{p}</span>
+              <button onClick={() => setVisionPoints(visionPoints.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600"><X size={14} /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="border-t border-slate-100 pt-6">
+        <h3 className="font-bold text-slate-900 mb-4">Director's Information</h3>
+        <div className="grid sm:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Director Name</label>
+            <input value={directorName} onChange={(e) => setDirectorName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Director Location</label>
+            <input value={directorLocation} onChange={(e) => setDirectorLocation(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm" />
+          </div>
+        </div>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">Director's Message</label>
+        <textarea value={directorMsg} onChange={(e) => setDirectorMsg(e.target.value)} rows={5} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none" />
+      </div>
+
+      <div className="border-t border-slate-100 pt-6">
+        <h3 className="font-bold text-slate-900 mb-4">Co-Director's Information</h3>
+        <div className="grid sm:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Co-Director Name</label>
+            <input value={coDirectorName} onChange={(e) => setCoDirectorName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Co-Director Location</label>
+            <input value={coDirectorLocation} onChange={(e) => setCoDirectorLocation(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm" />
+          </div>
+        </div>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">Co-Director's Message</label>
+        <textarea value={coDirectorMsg} onChange={(e) => setCoDirectorMsg(e.target.value)} rows={5} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none" />
+      </div>
+
+      <button onClick={() => onSave({
+        aboutContent: about,
+        visionContent: vision,
+        visionPoints,
+        directorMessage: directorMsg,
+        coDirectorMessage: coDirectorMsg,
+        directorName,
+        directorLocation,
+        coDirectorName,
+        coDirectorLocation,
+      })} className="pill-btn-primary"><Save size={16} className="mr-2" /> Save Changes</button>
+    </div>
+  );
+}
