@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { FileText, Download, BookOpen, ClipboardList, FileQuestion } from "lucide-react";
-import { getStore } from "../data/store";
+import {
+  FileText,
+  Download,
+  BookOpen,
+  ClipboardList,
+  FileQuestion,
+} from "lucide-react";
 
 type Doc = {
   id?: number;
+  type?: string;
   name: string;
   url: string;
 };
@@ -13,35 +19,66 @@ type Doc = {
 const tabs = [
   { id: "notes", label: "Notes", icon: BookOpen },
   { id: "syllabus", label: "Syllabus", icon: ClipboardList },
-  { id: "previous-papers", label: "Previous Papers", icon: FileQuestion },
+  {
+    id: "previous-papers",
+    label: "Previous Papers",
+    icon: FileQuestion,
+  },
 ];
 
 export default function StudyMaterial() {
   const [searchParams, setSearchParams] = useSearchParams();
+
   const initialTab = searchParams.get("tab") || "notes";
   const [activeTab, setActiveTab] = useState(initialTab);
 
-  const store = getStore();
-
   const [notes, setNotes] = useState<Doc[]>([]);
-  const [loadingNotes, setLoadingNotes] = useState(true);
+  const [syllabus, setSyllabus] = useState<Doc[]>([]);
+  const [papers, setPapers] = useState<Doc[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const loadDocuments = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const [notesResponse, syllabusResponse, papersResponse] =
+        await Promise.all([
+          fetch("/api/notes"),
+          fetch("/api/study-documents?type=syllabus"),
+          fetch("/api/study-documents?type=previous-papers"),
+        ]);
+
+      if (
+        !notesResponse.ok ||
+        !syllabusResponse.ok ||
+        !papersResponse.ok
+      ) {
+        throw new Error("Study material load failed");
+      }
+
+      const [notesData, syllabusData, papersData] =
+        await Promise.all([
+          notesResponse.json(),
+          syllabusResponse.json(),
+          papersResponse.json(),
+        ]);
+
+      setNotes(Array.isArray(notesData) ? notesData : []);
+      setSyllabus(Array.isArray(syllabusData) ? syllabusData : []);
+      setPapers(Array.isArray(papersData) ? papersData : []);
+    } catch (err) {
+      console.error(err);
+      setError("Study material load nahi ho pa raha.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    fetch("/api/notes")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load notes");
-        return res.json();
-      })
-      .then((data) => {
-        setNotes(Array.isArray(data) ? data : []);
-      })
-      .catch((err) => {
-        console.error("Notes loading error:", err);
-        setNotes([]);
-      })
-      .finally(() => {
-        setLoadingNotes(false);
-      });
+    loadDocuments();
   }, []);
 
   const handleTabChange = (tabId: string) => {
@@ -50,25 +87,19 @@ export default function StudyMaterial() {
   };
 
   const getData = (): Doc[] => {
-    switch (activeTab) {
-      case "notes":
-        return notes;
-      case "syllabus":
-        return store.syllabus as Doc[];
-      case "previous-papers":
-        return store.previousPapers as Doc[];
-      default:
-        return [];
-    }
+    if (activeTab === "notes") return notes;
+    if (activeTab === "syllabus") return syllabus;
+    return papers;
   };
 
   const data = getData();
-  const activeTabInfo = tabs.find((t) => t.id === activeTab);
+  const activeTabInfo = tabs.find((tab) => tab.id === activeTab);
 
   return (
     <div className="min-h-screen">
       <section className="bg-primary-light relative overflow-hidden">
         <div className="absolute inset-0 dotted-grid" />
+
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-28">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -79,6 +110,7 @@ export default function StudyMaterial() {
             <span className="text-primary font-semibold text-sm uppercase tracking-wider">
               Resources
             </span>
+
             <h1 className="text-4xl lg:text-5xl font-extrabold text-slate-900 mt-3">
               Study Material
             </h1>
@@ -109,23 +141,38 @@ export default function StudyMaterial() {
             })}
           </div>
 
+          {error && (
+            <div className="mb-6 bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm text-center">
+              {error}
+            </div>
+          )}
+
           <motion.div
             key={activeTab}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
           >
-            {activeTab === "notes" && loadingNotes ? (
+            {loading ? (
               <div className="bg-slate-50 rounded-2xl p-12 text-center">
-                <p className="text-slate-500">Loading Notes...</p>
+                <p className="text-slate-500">
+                  Loading {activeTabInfo?.label}...
+                </p>
               </div>
             ) : data.length === 0 ? (
               <div className="bg-slate-50 rounded-2xl p-12 text-center">
-                <FileText size={64} className="mx-auto text-slate-300 mb-4" />
+                <FileText
+                  size={64}
+                  className="mx-auto text-slate-300 mb-4"
+                />
+
                 <h3 className="text-xl font-bold text-slate-700 mb-2">
                   No {activeTabInfo?.label} Available
                 </h3>
-                <p className="text-slate-500">Check back later for updates.</p>
+
+                <p className="text-slate-500">
+                  Check back later for updates.
+                </p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -142,7 +189,10 @@ export default function StudyMaterial() {
                       <h4 className="font-semibold text-slate-900 truncate">
                         {doc.name}
                       </h4>
-                      <p className="text-xs text-slate-500">PDF Document</p>
+
+                      <p className="text-xs text-slate-500">
+                        PDF Document
+                      </p>
                     </div>
 
                     <a
