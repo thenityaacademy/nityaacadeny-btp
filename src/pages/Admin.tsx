@@ -417,45 +417,62 @@ function NewsAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSa
   );
 }
 
-function StudyMaterialAdmin({
-  store,
-  onSave,
-}: {
+function StudyMaterialAdmin(_props: {
   store: ReturnType<typeof getStore>;
   onSave: (d: Record<string, unknown>) => void;
 }) {
   type Doc = {
     id?: number;
+    type?: string;
     name: string;
     url: string;
   };
 
   const [activeTab, setActiveTab] = useState("notes");
   const [notes, setNotes] = useState<Doc[]>([]);
-  const [syllabus, setSyllabus] = useState<Doc[]>(store.syllabus as Doc[]);
-  const [papers, setPapers] = useState<Doc[]>(store.previousPapers as Doc[]);
+  const [syllabus, setSyllabus] = useState<Doc[]>([]);
+  const [papers, setPapers] = useState<Doc[]>([]);
   const [newDoc, setNewDoc] = useState({ name: "", url: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const loadNotes = async () => {
+  const loadDocuments = async () => {
     try {
-      const response = await fetch("/api/notes");
+      setError("");
 
-      if (!response.ok) {
-        throw new Error("Notes load failed");
+      const [notesResponse, syllabusResponse, papersResponse] =
+        await Promise.all([
+          fetch("/api/notes"),
+          fetch("/api/study-documents?type=syllabus"),
+          fetch("/api/study-documents?type=previous-papers"),
+        ]);
+
+      if (
+        !notesResponse.ok ||
+        !syllabusResponse.ok ||
+        !papersResponse.ok
+      ) {
+        throw new Error("Study material load failed");
       }
 
-      const data = await response.json();
-      setNotes(Array.isArray(data) ? data : []);
+      const [notesData, syllabusData, papersData] =
+        await Promise.all([
+          notesResponse.json(),
+          syllabusResponse.json(),
+          papersResponse.json(),
+        ]);
+
+      setNotes(Array.isArray(notesData) ? notesData : []);
+      setSyllabus(Array.isArray(syllabusData) ? syllabusData : []);
+      setPapers(Array.isArray(papersData) ? papersData : []);
     } catch (err) {
       console.error(err);
-      setError("Notes load nahi ho pa rahe.");
+      setError("Study material load nahi ho pa raha.");
     }
   };
 
   useEffect(() => {
-    loadNotes();
+    loadDocuments();
   }, []);
 
   const getData = (): Doc[] => {
@@ -464,81 +481,75 @@ function StudyMaterialAdmin({
     return papers;
   };
 
-  const setData = (data: Doc[]) => {
-    if (activeTab === "notes") setNotes(data);
-    else if (activeTab === "syllabus") setSyllabus(data);
-    else setPapers(data);
-  };
-
   const add = async () => {
     if (!newDoc.name.trim() || !newDoc.url.trim()) return;
 
-    setError("");
+    try {
+      setLoading(true);
+      setError("");
 
-    if (activeTab === "notes") {
-      try {
-        setLoading(true);
+      let response: Response;
 
-        const response = await fetch("/api/notes", {
+      if (activeTab === "notes") {
+        response = await fetch("/api/notes", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(newDoc),
         });
-
-        if (!response.ok) {
-          throw new Error("Note save failed");
-        }
-
-        setNewDoc({ name: "", url: "" });
-        await loadNotes();
-      } catch (err) {
-        console.error(err);
-        setError("Note save nahi hua.");
-      } finally {
-        setLoading(false);
-      }
-
-      return;
-    }
-
-    setData([...getData(), { ...newDoc }]);
-    setNewDoc({ name: "", url: "" });
-  };
-
-  const remove = async (i: number) => {
-    if (activeTab === "notes") {
-      const doc = notes[i];
-
-      if (!doc.id) return;
-
-      try {
-        const response = await fetch(`/api/notes/${doc.id}`, {
-          method: "DELETE",
+      } else {
+        response = await fetch("/api/study-documents", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: activeTab,
+            name: newDoc.name,
+            url: newDoc.url,
+          }),
         });
-
-        if (!response.ok) {
-          throw new Error("Delete failed");
-        }
-
-        setNotes(notes.filter((_, index) => index !== i));
-      } catch (err) {
-        console.error(err);
-        setError("Note delete nahi hua.");
       }
 
-      return;
-    }
+      if (!response.ok) {
+        throw new Error("Save failed");
+      }
 
-    setData(getData().filter((_, index) => index !== i));
+      setNewDoc({ name: "", url: "" });
+      await loadDocuments();
+    } catch (err) {
+      console.error(err);
+      setError("Document save nahi hua.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const saveAll = () => {
-    onSave({
-      syllabus,
-      previousPapers: papers,
-    });
+  const remove = async (doc: Doc) => {
+    if (!doc.id) return;
+
+    try {
+      setError("");
+
+      const endpoint =
+        activeTab === "notes"
+          ? `/api/notes/${doc.id}`
+          : `/api/study-documents/${doc.id}`;
+
+      const response = await fetch(endpoint, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Delete failed");
+      }
+
+      await loadDocuments();
+    } catch (err) {
+      console.error(err);
+      setError("Document delete nahi hua.");
+    }
   };
 
   return (
@@ -547,7 +558,7 @@ function StudyMaterialAdmin({
         Manage Study Material
       </h2>
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         {["notes", "syllabus", "previous-papers"].map((tab) => (
           <button
             key={tab}
@@ -571,7 +582,7 @@ function StudyMaterialAdmin({
         </div>
       )}
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-col sm:flex-row gap-2 mb-4">
         <input
           value={newDoc.name}
           onChange={(e) =>
@@ -600,15 +611,17 @@ function StudyMaterialAdmin({
       </div>
 
       <div className="space-y-2 mb-6">
-        {getData().map((doc, i) => (
+        {getData().map((doc) => (
           <div
-            key={doc.id ?? i}
+            key={doc.id}
             className="flex items-center justify-between border border-slate-100 rounded-xl p-3"
           >
-            <span className="text-sm text-slate-700">{doc.name}</span>
+            <span className="text-sm text-slate-700">
+              {doc.name}
+            </span>
 
             <button
-              onClick={() => remove(i)}
+              onClick={() => remove(doc)}
               className="w-8 h-8 bg-red-50 text-red-500 rounded-lg flex items-center justify-center"
             >
               <Trash2 size={14} />
@@ -617,20 +630,16 @@ function StudyMaterialAdmin({
         ))}
       </div>
 
-      {activeTab === "notes" ? (
-        <p className="text-sm text-green-600">
-          Notes automatically online database me save hote hain.
-        </p>
-      ) : (
-        <button onClick={saveAll} className="pill-btn-primary">
-          <Save size={16} className="mr-2" />
-          Save Changes
-        </button>
-      )}
+      <p className="text-sm text-green-600">
+        {activeTab === "notes"
+          ? "Notes online database me save hote hain."
+          : activeTab === "syllabus"
+          ? "Syllabus online database me save hota hai."
+          : "Previous Papers online database me save hote hain."}
+      </p>
     </div>
   );
 }
-
 function ScholarshipAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
   const [content, setContent] = useState(store.scholarshipContent);
   const [endDate, setEndDate] = useState(store.scholarshipEndDate);
