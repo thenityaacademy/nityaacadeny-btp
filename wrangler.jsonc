@@ -1,0 +1,14 @@
+{
+  "name": "nityaacademy-btp",
+  "compatibility_date": "2026-09-20",
+  "assets": {
+    "directory": "./dist"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nitya-academy-db",
+      "database_id": "742bd52d-4c17-4b36-af7c-053a80c52ff6"
+    }
+  ]
+}
