@@ -417,58 +417,216 @@ function NewsAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSa
   );
 }
 
-function StudyMaterialAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
-  const [activeTab, setActiveTab] = useState("notes");
-  const [notes, setNotes] = useState(store.notes);
-  const [syllabus, setSyllabus] = useState(store.syllabus);
-  const [papers, setPapers] = useState(store.previousPapers);
-  const [newDoc, setNewDoc] = useState({ name: "", url: "" });
-
-  const getData = () => activeTab === "notes" ? notes : activeTab === "syllabus" ? syllabus : papers;
-  const setData = (d: {name: string; url: string}[]) => {
-    if (activeTab === "notes") setNotes(d);
-    else if (activeTab === "syllabus") setSyllabus(d);
-    else setPapers(d);
+function StudyMaterialAdmin({
+  store,
+  onSave,
+}: {
+  store: ReturnType<typeof getStore>;
+  onSave: (d: Record<string, unknown>) => void;
+}) {
+  type Doc = {
+    id?: number;
+    name: string;
+    url: string;
   };
 
-  const add = () => {
+  const [activeTab, setActiveTab] = useState("notes");
+  const [notes, setNotes] = useState<Doc[]>([]);
+  const [syllabus, setSyllabus] = useState<Doc[]>(store.syllabus as Doc[]);
+  const [papers, setPapers] = useState<Doc[]>(store.previousPapers as Doc[]);
+  const [newDoc, setNewDoc] = useState({ name: "", url: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadNotes = async () => {
+    try {
+      const response = await fetch("/api/notes");
+
+      if (!response.ok) {
+        throw new Error("Notes load failed");
+      }
+
+      const data = await response.json();
+      setNotes(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      setError("Notes load nahi ho pa rahe.");
+    }
+  };
+
+  useEffect(() => {
+    loadNotes();
+  }, []);
+
+  const getData = (): Doc[] => {
+    if (activeTab === "notes") return notes;
+    if (activeTab === "syllabus") return syllabus;
+    return papers;
+  };
+
+  const setData = (data: Doc[]) => {
+    if (activeTab === "notes") setNotes(data);
+    else if (activeTab === "syllabus") setSyllabus(data);
+    else setPapers(data);
+  };
+
+  const add = async () => {
     if (!newDoc.name.trim() || !newDoc.url.trim()) return;
+
+    setError("");
+
+    if (activeTab === "notes") {
+      try {
+        setLoading(true);
+
+        const response = await fetch("/api/notes", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(newDoc),
+        });
+
+        if (!response.ok) {
+          throw new Error("Note save failed");
+        }
+
+        setNewDoc({ name: "", url: "" });
+        await loadNotes();
+      } catch (err) {
+        console.error(err);
+        setError("Note save nahi hua.");
+      } finally {
+        setLoading(false);
+      }
+
+      return;
+    }
+
     setData([...getData(), { ...newDoc }]);
     setNewDoc({ name: "", url: "" });
   };
 
-  const remove = (i: number) => {
-    setData(getData().filter((_doc: {name: string; url: string}, idx: number) => idx !== i));
+  const remove = async (i: number) => {
+    if (activeTab === "notes") {
+      const doc = notes[i];
+
+      if (!doc.id) return;
+
+      try {
+        const response = await fetch(`/api/notes/${doc.id}`, {
+          method: "DELETE",
+        });
+
+        if (!response.ok) {
+          throw new Error("Delete failed");
+        }
+
+        setNotes(notes.filter((_, index) => index !== i));
+      } catch (err) {
+        console.error(err);
+        setError("Note delete nahi hua.");
+      }
+
+      return;
+    }
+
+    setData(getData().filter((_, index) => index !== i));
   };
 
   const saveAll = () => {
-    onSave({ notes, syllabus, previousPapers: papers });
+    onSave({
+      syllabus,
+      previousPapers: papers,
+    });
   };
 
   return (
     <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
-      <h2 className="text-xl font-bold text-slate-900 mb-6">Manage Study Material</h2>
+      <h2 className="text-xl font-bold text-slate-900 mb-6">
+        Manage Study Material
+      </h2>
+
       <div className="flex gap-2 mb-6">
         {["notes", "syllabus", "previous-papers"].map((tab) => (
-          <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-full text-xs font-semibold ${activeTab === tab ? "bg-primary text-white" : "bg-slate-100 text-slate-600"}`}>
-            {tab === "previous-papers" ? "Previous Papers" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 rounded-full text-xs font-semibold ${
+              activeTab === tab
+                ? "bg-primary text-white"
+                : "bg-slate-100 text-slate-600"
+            }`}
+          >
+            {tab === "previous-papers"
+              ? "Previous Papers"
+              : tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </div>
+
+      {error && (
+        <div className="mb-4 bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm">
+          {error}
+        </div>
+      )}
+
       <div className="flex gap-2 mb-4">
-        <input value={newDoc.name} onChange={(e) => setNewDoc({ ...newDoc, name: e.target.value })} placeholder="Document name" className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-        <input value={newDoc.url} onChange={(e) => setNewDoc({ ...newDoc, url: e.target.value })} placeholder="URL" className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-        <button onClick={add} className="pill-btn-primary text-xs"><Plus size={14} /></button>
+        <input
+          value={newDoc.name}
+          onChange={(e) =>
+            setNewDoc({ ...newDoc, name: e.target.value })
+          }
+          placeholder="Document name"
+          className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm"
+        />
+
+        <input
+          value={newDoc.url}
+          onChange={(e) =>
+            setNewDoc({ ...newDoc, url: e.target.value })
+          }
+          placeholder="Google Drive / PDF URL"
+          className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm"
+        />
+
+        <button
+          onClick={add}
+          disabled={loading}
+          className="pill-btn-primary text-xs"
+        >
+          <Plus size={14} />
+        </button>
       </div>
+
       <div className="space-y-2 mb-6">
-        {getData().map((doc: {name: string}, i: number) => (
-          <div key={i} className="flex items-center justify-between border border-slate-100 rounded-xl p-3">
+        {getData().map((doc, i) => (
+          <div
+            key={doc.id ?? i}
+            className="flex items-center justify-between border border-slate-100 rounded-xl p-3"
+          >
             <span className="text-sm text-slate-700">{doc.name}</span>
-            <button onClick={() => remove(i)} className="w-8 h-8 bg-red-50 text-red-500 rounded-lg flex items-center justify-center"><Trash2 size={14} /></button>
+
+            <button
+              onClick={() => remove(i)}
+              className="w-8 h-8 bg-red-50 text-red-500 rounded-lg flex items-center justify-center"
+            >
+              <Trash2 size={14} />
+            </button>
           </div>
         ))}
       </div>
-      <button onClick={saveAll} className="pill-btn-primary"><Save size={16} className="mr-2" /> Save Changes</button>
+
+      {activeTab === "notes" ? (
+        <p className="text-sm text-green-600">
+          Notes automatically online database me save hote hain.
+        </p>
+      ) : (
+        <button onClick={saveAll} className="pill-btn-primary">
+          <Save size={16} className="mr-2" />
+          Save Changes
+        </button>
+      )}
     </div>
   );
 }
