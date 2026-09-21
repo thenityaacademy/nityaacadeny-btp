@@ -37,6 +37,34 @@ export default function Home() {
   const store = getStore();
   const [offerIndex, setOfferIndex] = useState(0);
   const [instaIndex, setInstaIndex] = useState(0);
+  const [aboutContent, setAboutContent] = useState(
+  store.aboutContent
+);
+
+useEffect(() => {
+  const loadAboutContent = async () => {
+    try {
+      const response = await fetch("/api/site-settings");
+
+      if (!response.ok) {
+        throw new Error("About content load failed");
+      }
+
+      const data = await response.json();
+
+      if (
+        typeof data.aboutContent === "string" &&
+        data.aboutContent.trim()
+      ) {
+        setAboutContent(data.aboutContent);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  loadAboutContent();
+}, []);
   const [instagramImages, setInstagramImages] = useState<string[]>(
   store.instagramImages
 );
@@ -289,7 +317,7 @@ useEffect(() => {
                 Building Futures Through Education
               </h2>
               <p className="text-slate-600 leading-relaxed mb-6">
-                {store.aboutContent.split("\n\n")[0]}
+                {aboutContent.split("\n\n")[0]}
               </p>
               <Link to="/about" className="pill-btn-primary">
                 Read More
