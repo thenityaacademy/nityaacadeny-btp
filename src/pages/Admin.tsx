@@ -196,6 +196,20 @@ function OfferImagesAdmin(_props: {
   store: ReturnType<typeof getStore>;
   onSave: (d: Record<string, unknown>) => void;
 }) {
+  const getGoogleDriveImageUrl = (url: string) => {
+  if (url.includes("drive.google.com")) {
+    const fileMatch = url.match(/\/file\/d\/([^/]+)/);
+    const idMatch = url.match(/[?&]id=([^&]+)/);
+
+    const fileId = fileMatch?.[1] || idMatch?.[1];
+
+    if (fileId) {
+      return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`;
+    }
+  }
+
+  return url;
+};
   const [images, setImages] = useState<string[]>(
     _props.store.offerImages
   );
@@ -345,7 +359,7 @@ function OfferImagesAdmin(_props: {
               className="relative rounded-xl overflow-hidden card-shadow group bg-slate-50"
             >
               <img
-                src={url}
+                src={getGoogleDriveImageUrl(url)}
                 alt={`Offer ${i + 1}`}
                 className="w-full h-40 object-contain"
               />
