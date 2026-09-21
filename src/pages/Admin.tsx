@@ -819,78 +819,203 @@ function ScholarshipAdmin({ store, onSave }: { store: ReturnType<typeof getStore
   );
 }
 
-function RecognitionAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
-  const [docs, setDocs] = useState<{name: string; url: string}[]>(store.recognitionDocs);
-  const [newDoc, setNewDoc] = useState({ name: "", url: "" });
-
-  const add = () => {
-    if (!newDoc.name.trim() || !newDoc.url.trim()) return;
-    setDocs([...docs, { ...newDoc }]);
-    setNewDoc({ name: "", url: "" });
+function RecognitionAdmin(_props: {
+  store: ReturnType<typeof getStore>;
+  onSave: (d: Record<string, unknown>) => void;
+}) {
+  type RecognitionDoc = {
+    id: number;
+    name: string;
+    url: string;
   };
 
-  const remove = (i: number) => {
-    setDocs(docs.filter((_, idx) => idx !== i));
+  const [docs, setDocs] = useState<RecognitionDoc[]>([]);
+  const [newDoc, setNewDoc] = useState({
+    name: "",
+    url: "",
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadDocs = async () => {
+    try {
+      setError("");
+
+      const response = await fetch("/api/recognition-documents");
+
+      if (!response.ok) {
+        throw new Error("Documents load failed");
+      }
+
+      const data = await response.json();
+
+      setDocs(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      setError("Recognition documents load nahi ho rahe.");
+    }
+  };
+
+  useEffect(() => {
+    loadDocs();
+  }, []);
+
+  const add = async () => {
+    if (!newDoc.name.trim() || !newDoc.url.trim()) {
+      setError("Document name aur URL required hai.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await fetch("/api/recognition-documents", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newDoc),
+      });
+
+      if (!response.ok) {
+        throw new Error("Document save failed");
+      }
+
+      setNewDoc({
+        name: "",
+        url: "",
+      });
+
+      await loadDocs();
+    } catch (err) {
+      console.error(err);
+      setError("Recognition document save nahi hua.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const remove = async (id: number) => {
+    try {
+      setError("");
+
+      const response = await fetch(
+        `/api/recognition-documents/${id}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Delete failed");
+      }
+
+      await loadDocs();
+    } catch (err) {
+      console.error(err);
+      setError("Document delete nahi hua.");
+    }
   };
 
   return (
     <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
-      <h2 className="text-xl font-bold text-slate-900 mb-2">Recognition Documents</h2>
-      <p className="text-sm text-slate-500 mb-6">Upload A4 size document images (recommended 2480 x 3508 pixels)</p>
+      <h2 className="text-xl font-bold text-slate-900 mb-2">
+        Recognition Documents
+      </h2>
 
-      <div className="flex gap-2 mb-6">
+      <p className="text-sm text-slate-500 mb-6">
+        Image ya PDF/Google Drive document ka link add karein.
+      </p>
+
+      {error && (
+        <div className="mb-4 bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm">
+          {error}
+        </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row gap-2 mb-6">
         <input
           type="text"
           value={newDoc.name}
-          onChange={(e) => setNewDoc({ ...newDoc, name: e.target.value })}
-          placeholder="Document name (e.g. Registration Certificate)"
-          className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+          onChange={(e) =>
+            setNewDoc({
+              ...newDoc,
+              name: e.target.value,
+            })
+          }
+          placeholder="Document name"
+          className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm"
         />
+
         <input
           type="text"
           value={newDoc.url}
-          onChange={(e) => setNewDoc({ ...newDoc, url: e.target.value })}
-          placeholder="Image URL"
-          className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+          onChange={(e) =>
+            setNewDoc({
+              ...newDoc,
+              url: e.target.value,
+            })
+          }
+          placeholder="Image / PDF / Google Drive URL"
+          className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm"
         />
-        <button onClick={add} className="pill-btn-primary"><Plus size={18} /></button>
+
+        <button
+          onClick={add}
+          disabled={loading}
+          className="pill-btn-primary"
+        >
+          <Plus size={18} />
+        </button>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-4 mb-6">
-        {docs.map((doc, i) => (
-          <div key={i} className="relative rounded-xl overflow-hidden card-shadow group border border-slate-100">
-            <img
-              src={doc.url}
-              alt={doc.name}
-              className="w-full aspect-[248/351] object-contain bg-slate-100"
-            />
-            <div className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm p-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-900 truncate pr-2">{doc.name}</span>
-              <button
-                onClick={() => remove(i)}
-                className="w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center shrink-0"
-              >
-                <Trash2 size={12} />
-              </button>
+      <div className="space-y-3 mb-6">
+        {docs.map((doc) => (
+          <div
+            key={doc.id}
+            className="flex items-center justify-between border border-slate-100 rounded-xl p-4"
+          >
+            <div className="min-w-0 pr-3">
+              <p className="font-medium text-slate-900 text-sm">
+                {doc.name}
+              </p>
+
+              <p className="text-xs text-slate-500 truncate">
+                {doc.url}
+              </p>
             </div>
+
+            <button
+              onClick={() => remove(doc.id)}
+              className="w-8 h-8 bg-red-50 text-red-500 rounded-lg flex items-center justify-center shrink-0"
+            >
+              <Trash2 size={14} />
+            </button>
           </div>
         ))}
       </div>
 
       {docs.length === 0 && (
         <div className="bg-slate-50 rounded-xl p-8 text-center mb-6">
-          <Award size={40} className="mx-auto text-slate-300 mb-2" />
-          <p className="text-slate-500 text-sm">No recognition documents uploaded yet.</p>
+          <Award
+            size={40}
+            className="mx-auto text-slate-300 mb-2"
+          />
+
+          <p className="text-slate-500 text-sm">
+            No recognition documents uploaded yet.
+          </p>
         </div>
       )}
 
-      <button onClick={() => onSave({ recognitionDocs: docs })} className="pill-btn-primary">
-        <Save size={16} className="mr-2" /> Save Changes
-      </button>
+      <p className="text-sm text-green-600">
+        Recognition documents automatically online database me save hote hain.
+      </p>
     </div>
   );
 }
-
 function ContentAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
   const [about, setAbout] = useState(store.aboutContent);
   const [vision, setVision] = useState(store.visionContent);
