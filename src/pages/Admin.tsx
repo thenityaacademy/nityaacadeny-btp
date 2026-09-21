@@ -17,27 +17,109 @@ const SECTIONS = [
 
 export default function Admin() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [loggingIn, setLoggingIn] = useState(false);
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
+
   const [activeSection, setActiveSection] = useState("offers");
   const [store, setLocalStore] = useState(getStore());
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    const session = sessionStorage.getItem("nitya_admin_session");
-    if (session === "active") setLoggedIn(true);
+    const checkSession = async () => {
+      try {
+        const response = await fetch(
+          "/api/admin/session",
+          {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          }
+        );
+
+        if (!response.ok) {
+          setLoggedIn(false);
+          return;
+        }
+
+        const data = await response.json();
+
+        setLoggedIn(
+          data.authenticated === true
+        );
+      } catch (err) {
+        console.error(err);
+        setLoggedIn(false);
+      } finally {
+        setCheckingSession(false);
+      }
+    };
+
+    checkSession();
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (
+    e: React.FormEvent
+  ) => {
     e.preventDefault();
-    if (username === "thenityaacademy@gmail.com" && password === "Redhat@123") {
-      setLoggedIn(true);
-      sessionStorage.setItem("nitya_admin_session", "active");
+
+    try {
+      setLoggingIn(true);
       setLoginError("");
-    } else {
-      setLoginError("Invalid username or password");
+
+      const response = await fetch(
+        "/api/admin/login",
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username: username.trim(),
+            password,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        setLoginError(
+          "Invalid username or password"
+        );
+        return;
+      }
+
+      setLoggedIn(true);
+      setPassword("");
+    } catch (err) {
+      console.error(err);
+
+      setLoginError(
+        "Login service unavailable. Please try again."
+      );
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch(
+        "/api/admin/logout",
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoggedIn(false);
+      setPassword("");
     }
   };
 
@@ -47,7 +129,21 @@ export default function Admin() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
-
+  const handleSave = (data: Record<string, unknown>) => {
+    const updated = setStore(data);
+    setLocalStore(updated);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+if (checkingSession) {
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <p className="text-slate-500 text-sm">
+        Checking secure admin session...
+      </p>
+    </div>
+  );
+}
   if (!loggedIn) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
