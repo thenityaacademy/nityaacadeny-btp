@@ -23,14 +23,52 @@ export default function Home() {
   const store = getStore();
   const [offerIndex, setOfferIndex] = useState(0);
   const [instaIndex, setInstaIndex] = useState(0);
+const [offerImages, setOfferImages] = useState<string[]>(
+  store.offerImages
+);
 
-  const nextOffer = useCallback(() => {
-    setOfferIndex((i) => (i + 1) % store.offerImages.length);
-  }, [store.offerImages.length]);
+useEffect(() => {
+  const loadOfferImages = async () => {
+    try {
+      const response = await fetch("/api/site-settings");
 
-  const prevOffer = useCallback(() => {
-    setOfferIndex((i) => (i - 1 + store.offerImages.length) % store.offerImages.length);
-  }, [store.offerImages.length]);
+      if (!response.ok) {
+        throw new Error("Offer images load failed");
+      }
+
+      const data = await response.json();
+
+      if (typeof data.offerImages === "string") {
+        const parsed = JSON.parse(data.offerImages);
+
+        if (Array.isArray(parsed)) {
+          setOfferImages(parsed);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  loadOfferImages();
+}, []);
+ const nextOffer = useCallback(() => {
+  if (offerImages.length <= 1) return;
+
+  setOfferIndex(
+    (i) => (i + 1) % offerImages.length
+  );
+}, [offerImages.length]);
+
+const prevOffer = useCallback(() => {
+  if (offerImages.length <= 1) return;
+
+  setOfferIndex(
+    (i) =>
+      (i - 1 + offerImages.length) %
+      offerImages.length
+  );
+}, [offerImages.length]);
 
   const nextInsta = useCallback(() => {
     setInstaIndex((i) => (i + 1) % store.instagramImages.length);
@@ -41,9 +79,21 @@ export default function Home() {
   }, [store.instagramImages.length]);
 
   useEffect(() => {
-    const timer = setInterval(nextOffer, 4000);
-    return () => clearInterval(timer);
-  }, [nextOffer]);
+  if (offerImages.length <= 1) return;
+
+  const timer = setInterval(nextOffer, 4000);
+
+  return () => clearInterval(timer);
+}, [nextOffer, offerImages.length]);
+
+useEffect(() => {
+  if (
+    offerImages.length > 0 &&
+    offerIndex >= offerImages.length
+  ) {
+    setOfferIndex(0);
+  }
+}, [offerImages.length, offerIndex]);
 
   useEffect(() => {
     const timer = setInterval(nextInsta, 3500);
@@ -125,7 +175,7 @@ export default function Home() {
                 className="flex transition-transform duration-500 ease-out items-center"
                 style={{ transform: `translateX(-${offerIndex * 100}%)` }}
               >
-                {store.offerImages.map((img: string, i: number) => (
+                {offerImages.map((img: string, i: number) => (
                   <div key={i} className="w-full flex-shrink-0 flex items-center justify-center bg-white p-2 sm:p-3">
                     <img
                       src={img}
@@ -146,7 +196,7 @@ export default function Home() {
           </div>
 
           <div className="flex justify-center gap-2 mt-6">
-            {store.offerImages.map((_: string, i: number) => (
+            {offerImages.map((_: string, i: number) => (
               <button
                 key={i}
                 onClick={() => setOfferIndex(i)}
