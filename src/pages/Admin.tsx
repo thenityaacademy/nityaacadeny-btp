@@ -1060,25 +1060,196 @@ function CoursesAdmin(_props: {
   );
 }
 
-function PopupAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
-  const [enabled, setEnabled] = useState(store.popupEnabled);
+function PopupAdmin(_props: {
+  store: ReturnType<typeof getStore>;
+  onSave: (d: Record<string, unknown>) => void;
+}) {
+  const getGoogleDriveImageUrl = (url: string) => {
+    if (url.includes("drive.google.com")) {
+      const fileMatch = url.match(/\/file\/d\/([^/]+)/);
+      const idMatch = url.match(/[?&]id=([^&]+)/);
+
+      const fileId = fileMatch?.[1] || idMatch?.[1];
+
+      if (fileId) {
+        return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`;
+      }
+    }
+
+    return url;
+  };
+
+  const [enabled, setEnabled] = useState(
+    _props.store.popupEnabled
+  );
+
+  const [imageUrl, setImageUrl] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    const loadPopupSettings = async () => {
+      try {
+        setLoading(true);
+        setStatus("");
+
+        const response = await fetch("/api/site-settings");
+
+        if (!response.ok) {
+          throw new Error("Popup settings load failed");
+        }
+
+        const data = await response.json();
+
+        if (typeof data.popupEnabled === "string") {
+          setEnabled(data.popupEnabled === "true");
+        }
+
+        if (typeof data.popupImage === "string") {
+          setImageUrl(data.popupImage);
+        }
+      } catch (err) {
+        console.error(err);
+        setStatus(
+          "Online popup settings load nahi ho rahi."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPopupSettings();
+  }, []);
+
+  const savePopupSettings = async () => {
+    try {
+      setSaving(true);
+      setStatus("");
+
+      const saveEnabled = fetch(
+        "/api/site-settings",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            key: "popupEnabled",
+            value: enabled ? "true" : "false",
+          }),
+        }
+      );
+
+      const saveImage = fetch(
+        "/api/site-settings",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            key: "popupImage",
+            value: imageUrl.trim(),
+          }),
+        }
+      );
+
+      const responses = await Promise.all([
+        saveEnabled,
+        saveImage,
+      ]);
+
+      if (responses.some((response) => !response.ok)) {
+        throw new Error("Popup settings save failed");
+      }
+
+      setStatus(
+        "Popup settings online database me save ho gayi."
+      );
+    } catch (err) {
+      console.error(err);
+      setStatus("Popup settings save nahi hui.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
-      <h2 className="text-xl font-bold text-slate-900 mb-6">Popup Ad Settings</h2>
-      <div className="mb-6">
-        <img src="https://i.ibb.co/FR4TBgy/Chat-GPT-Image-Jun-10-2026-04-34-22-PM.png" alt="Popup" className="w-full max-w-sm rounded-xl card-shadow" />
-      </div>
-      <label className="flex items-center gap-3 mb-6">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-          className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary"
-        />
-        <span className="text-slate-700 font-medium">Enable Popup Ad</span>
-      </label>
-      <button onClick={() => onSave({ popupEnabled: enabled })} className="pill-btn-primary"><Save size={16} className="mr-2" /> Save Changes</button>
+
+      <h2 className="text-xl font-bold text-slate-900 mb-6">
+        Popup Ad Settings
+      </h2>
+
+      {status && (
+        <div className="mb-4 bg-slate-50 text-slate-700 px-4 py-3 rounded-xl text-sm">
+          {status}
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-slate-500 mb-6">
+          Loading popup settings...
+        </p>
+      ) : (
+        <>
+          <div className="mb-5">
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Google Drive Image Link
+            </label>
+
+            <input
+              type="text"
+              value={imageUrl}
+              onChange={(e) =>
+                setImageUrl(e.target.value)
+              }
+              placeholder="Paste Google Drive image link"
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+            />
+          </div>
+
+          {imageUrl.trim() && (
+            <div className="mb-6 bg-slate-50 rounded-xl p-3">
+              <img
+                src={getGoogleDriveImageUrl(imageUrl)}
+                alt="Popup Preview"
+                className="w-full max-w-sm mx-auto rounded-xl object-contain"
+              />
+            </div>
+          )}
+
+          <label className="flex items-center gap-3 mb-6">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) =>
+                setEnabled(e.target.checked)
+              }
+              className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary"
+            />
+
+            <span className="text-slate-700 font-medium">
+              Enable Popup Ad
+            </span>
+          </label>
+        </>
+      )}
+
+      <button
+        onClick={savePopupSettings}
+        disabled={saving || loading}
+        className="pill-btn-primary"
+      >
+        <Save size={16} className="mr-2" />
+        {saving ? "Saving..." : "Save Changes"}
+      </button>
+
+      <p className="text-sm text-green-600 mt-3">
+        Popup image aur Enable/Disable setting online save hogi.
+      </p>
+
     </div>
   );
 }
