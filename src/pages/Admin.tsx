@@ -192,50 +192,191 @@ export default function Admin() {
 
 // Admin Sub-Components
 
-function OfferImagesAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
-  const [images, setImages] = useState<string[]>(store.offerImages);
-  const [newUrl, setNewUrl] = useState("");
+function OfferImagesAdmin(_props: {
+  store: ReturnType<typeof getStore>;
+  onSave: (d: Record<string, unknown>) => void;
+}) {
+  const [images, setImages] = useState<string[]>(
+    _props.store.offerImages
+  );
 
-  const add = () => {
-    if (!newUrl.trim()) return;
-    setImages([...images, newUrl]);
-    setNewUrl("");
+  const [newUrl, setNewUrl] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState("");
+
+  const loadImages = async () => {
+    try {
+      setLoading(true);
+      setStatus("");
+
+      const response = await fetch("/api/site-settings");
+
+      if (!response.ok) {
+        throw new Error("Offer images load failed");
+      }
+
+      const data = await response.json();
+
+      if (typeof data.offerImages === "string") {
+        const parsed = JSON.parse(data.offerImages);
+
+        if (Array.isArray(parsed)) {
+          setImages(parsed);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setStatus(
+        "Online offer images load nahi ho pa rahi."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const remove = (i: number) => {
-    setImages(images.filter((_, idx) => idx !== i));
+  useEffect(() => {
+    loadImages();
+  }, []);
+
+  const add = () => {
+    const url = newUrl.trim();
+
+    if (!url) {
+      setStatus("Image URL enter karein.");
+      return;
+    }
+
+    setImages([...images, url]);
+    setNewUrl("");
+
+    setStatus(
+      "Image list me add ho gayi. Ab Save Changes dabayein."
+    );
+  };
+
+  const remove = (index: number) => {
+    setImages(
+      images.filter((_, i) => i !== index)
+    );
+
+    setStatus(
+      "Image remove ho gayi. Ab Save Changes dabayein."
+    );
+  };
+
+  const saveImagesOnline = async () => {
+    try {
+      setSaving(true);
+      setStatus("");
+
+      const response = await fetch(
+        "/api/site-settings",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            key: "offerImages",
+            value: JSON.stringify(images),
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Offer images save failed");
+      }
+
+      setStatus(
+        "Offer images online database me save ho gayi."
+      );
+    } catch (err) {
+      console.error(err);
+      setStatus(
+        "Offer images save nahi hui."
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
-      <h2 className="text-xl font-bold text-slate-900 mb-6">Offer Carousel Images</h2>
+
+      <h2 className="text-xl font-bold text-slate-900 mb-6">
+        Offer Carousel Images
+      </h2>
+
+      {status && (
+        <div className="mb-4 bg-slate-50 text-slate-700 px-4 py-3 rounded-xl text-sm">
+          {status}
+        </div>
+      )}
+
       <div className="flex gap-2 mb-6">
         <input
           type="text"
           value={newUrl}
-          onChange={(e) => setNewUrl(e.target.value)}
+          onChange={(e) =>
+            setNewUrl(e.target.value)
+          }
           placeholder="Enter image URL"
           className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
         />
-        <button onClick={add} className="pill-btn-primary"><Plus size={18} /></button>
+
+        <button
+          onClick={add}
+          className="pill-btn-primary"
+        >
+          <Plus size={18} />
+        </button>
       </div>
-      <div className="grid sm:grid-cols-2 gap-4 mb-6">
-        {images.map((url, i) => (
-          <div key={i} className="relative rounded-xl overflow-hidden card-shadow group">
-            <img src={url} alt={`Offer ${i + 1}`} className="w-full h-40 object-cover" />
-            <button onClick={() => remove(i)} className="absolute top-2 right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ))}
-      </div>
-      <button onClick={() => onSave({ offerImages: images })} className="pill-btn-primary">
-        <Save size={16} className="mr-2" /> Save Changes
+
+      {loading ? (
+        <p className="text-sm text-slate-500 mb-6">
+          Loading offer images...
+        </p>
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-4 mb-6">
+          {images.map((url, i) => (
+            <div
+              key={`${url}-${i}`}
+              className="relative rounded-xl overflow-hidden card-shadow group bg-slate-50"
+            >
+              <img
+                src={url}
+                alt={`Offer ${i + 1}`}
+                className="w-full h-40 object-contain"
+              />
+
+              <button
+                onClick={() => remove(i)}
+                className="absolute top-2 right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button
+        onClick={saveImagesOnline}
+        disabled={saving}
+        className="pill-btn-primary"
+      >
+        <Save size={16} className="mr-2" />
+        {saving ? "Saving..." : "Save Changes"}
       </button>
+
+      <p className="text-sm text-green-600 mt-3">
+        Offer images online database me save hongi.
+      </p>
+
     </div>
   );
 }
-
 function InstagramImagesAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
   const [images, setImages] = useState<string[]>(store.instagramImages);
   const [newUrl, setNewUrl] = useState("");
