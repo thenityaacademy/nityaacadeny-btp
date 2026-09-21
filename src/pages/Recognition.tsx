@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  FileText,
-  ExternalLink,
-  Award,
-} from "lucide-react";
+import { FileText, Award } from "lucide-react";
 
 type RecognitionDoc = {
   id: number;
@@ -12,8 +8,21 @@ type RecognitionDoc = {
   url: string;
 };
 
-function isImageUrl(url: string) {
-  return /\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i.test(url);
+function getGoogleDriveImage(url: string): string | null {
+  if (!url.includes("drive.google.com")) {
+    return null;
+  }
+
+  const fileMatch = url.match(/\/file\/d\/([^/]+)/);
+  const idMatch = url.match(/[?&]id=([^&]+)/);
+
+  const fileId = fileMatch?.[1] || idMatch?.[1];
+
+  if (!fileId) {
+    return null;
+  }
+
+  return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`;
 }
 
 export default function Recognition() {
@@ -53,6 +62,7 @@ export default function Recognition() {
 
   return (
     <div className="min-h-screen">
+
       <section className="bg-primary-light relative overflow-hidden">
         <div className="absolute inset-0 dotted-grid" />
 
@@ -76,6 +86,7 @@ export default function Recognition() {
 
       <section className="py-16 lg:py-24 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
           <div className="grid lg:grid-cols-2 gap-12 items-start">
 
             <motion.div
@@ -167,66 +178,54 @@ export default function Recognition() {
                 </div>
               ) : (
                 <div className="grid gap-6">
-                  {docs.map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="bg-white rounded-2xl card-shadow border border-slate-100 overflow-hidden"
-                    >
-                      {isImageUrl(doc.url) ? (
+                  {docs.map((doc) => {
+                    const imageUrl =
+                      getGoogleDriveImage(doc.url);
+
+                    if (!imageUrl) {
+                      return null;
+                    }
+
+                    return (
+                      <div
+                        key={doc.id}
+                        className="bg-white rounded-2xl card-shadow border border-slate-100 overflow-hidden"
+                      >
+
                         <div className="bg-slate-100 p-4 flex items-center justify-center">
                           <img
-                            src={doc.url}
+                            src={imageUrl}
                             alt={doc.name}
-                            className="max-h-[500px] w-auto object-contain shadow-lg"
+                            className="max-h-[650px] max-w-full w-auto object-contain rounded-lg shadow-lg"
                           />
                         </div>
-                      ) : (
-                        <div className="bg-slate-50 p-10 flex flex-col items-center justify-center text-center">
-                          <div className="w-20 h-20 bg-primary-light rounded-2xl flex items-center justify-center mb-4">
-                            <FileText
-                              size={38}
-                              className="text-primary"
-                            />
-                          </div>
 
-                          <p className="text-sm text-slate-500">
-                            PDF / Online Document
-                          </p>
-                        </div>
-                      )}
+                        <div className="p-4">
+                          <div className="flex items-center gap-3">
 
-                      <div className="p-4 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 bg-primary-light rounded-lg flex items-center justify-center shrink-0">
-                            <FileText
-                              size={20}
-                              className="text-primary"
-                            />
-                          </div>
+                            <div className="w-10 h-10 bg-primary-light rounded-lg flex items-center justify-center shrink-0">
+                              <FileText
+                                size={20}
+                                className="text-primary"
+                              />
+                            </div>
 
-                          <div className="min-w-0">
-                            <h4 className="font-semibold text-slate-900 text-sm truncate">
-                              {doc.name}
-                            </h4>
+                            <div>
+                              <h4 className="font-semibold text-slate-900 text-sm">
+                                {doc.name}
+                              </h4>
 
-                            <p className="text-xs text-slate-500">
-                              Recognition Document
-                            </p>
+                              <p className="text-xs text-slate-500">
+                                Recognition Document
+                              </p>
+                            </div>
+
                           </div>
                         </div>
 
-                        <a
-                          href={doc.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-10 h-10 rounded-lg bg-primary-light flex items-center justify-center hover:bg-primary hover:text-white transition-colors shrink-0"
-                          title="Open document"
-                        >
-                          <ExternalLink size={18} />
-                        </a>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </motion.div>
