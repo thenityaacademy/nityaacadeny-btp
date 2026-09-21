@@ -118,6 +118,56 @@ export default {
       return Response.json({ success: true });
     }
 
+    // ---------------- NEWS ----------------
+
+    if (url.pathname === "/api/news" && request.method === "GET") {
+      const { results } = await env.DB
+        .prepare(
+          "SELECT id, title, content, date FROM news ORDER BY date DESC, id DESC"
+        )
+        .all();
+
+      return Response.json(results);
+    }
+
+    if (url.pathname === "/api/news" && request.method === "POST") {
+      const body = await request.json() as {
+        title?: string;
+        content?: string;
+        date?: string;
+      };
+
+      if (!body.title || !body.content || !body.date) {
+        return Response.json(
+          { error: "Title, content and date are required" },
+          { status: 400 }
+        );
+      }
+
+      await env.DB
+        .prepare(
+          "INSERT INTO news (title, content, date) VALUES (?, ?, ?)"
+        )
+        .bind(body.title, body.content, body.date)
+        .run();
+
+      return Response.json({ success: true });
+    }
+
+    if (
+      url.pathname.startsWith("/api/news/") &&
+      request.method === "DELETE"
+    ) {
+      const id = Number(url.pathname.split("/").pop());
+
+      await env.DB
+        .prepare("DELETE FROM news WHERE id = ?")
+        .bind(id)
+        .run();
+
+      return Response.json({ success: true });
+    }
+
     return env.ASSETS.fetch(request);
   },
 };
