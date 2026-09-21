@@ -168,6 +168,124 @@ export default {
       return Response.json({ success: true });
     }
 
+    // ---------------- SITE SETTINGS ----------------
+    // About Institute and future page settings
+
+    if (
+      url.pathname === "/api/site-settings" &&
+      request.method === "GET"
+    ) {
+      const { results } = await env.DB
+        .prepare("SELECT key, value FROM site_settings")
+        .all();
+
+      const settings: Record<string, string> = {};
+
+      for (const row of results as Array<{
+        key: string;
+        value: string;
+      }>) {
+        settings[row.key] = row.value;
+      }
+
+      return Response.json(settings);
+    }
+
+    if (
+      url.pathname === "/api/site-settings" &&
+      request.method === "POST"
+    ) {
+      const body = await request.json() as {
+        key?: string;
+        value?: string;
+      };
+
+      if (!body.key || typeof body.value !== "string") {
+        return Response.json(
+          { error: "Key and value are required" },
+          { status: 400 }
+        );
+      }
+
+      await env.DB
+        .prepare(`
+          INSERT INTO site_settings (key, value, updated_at)
+          VALUES (?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(key)
+          DO UPDATE SET
+            value = excluded.value,
+            updated_at = CURRENT_TIMESTAMP
+        `)
+        .bind(body.key, body.value)
+        .run();
+
+      return Response.json({ success: true });
+    }
+
+    // -------- RECOGNITION DOCUMENTS --------
+
+    if (
+      url.pathname === "/api/recognition-documents" &&
+      request.method === "GET"
+    ) {
+      const { results } = await env.DB
+        .prepare(
+          "SELECT id, name, url FROM recognition_documents ORDER BY id DESC"
+        )
+        .all();
+
+      return Response.json(results);
+    }
+
+    if (
+      url.pathname === "/api/recognition-documents" &&
+      request.method === "POST"
+    ) {
+      const body = await request.json() as {
+        name?: string;
+        url?: string;
+      };
+
+      if (!body.name || !body.url) {
+        return Response.json(
+          { error: "Name and URL are required" },
+          { status: 400 }
+        );
+      }
+
+      await env.DB
+        .prepare(
+          "INSERT INTO recognition_documents (name, url) VALUES (?, ?)"
+        )
+        .bind(body.name, body.url)
+        .run();
+
+      return Response.json({ success: true });
+    }
+
+    if (
+      url.pathname.startsWith("/api/recognition-documents/") &&
+      request.method === "DELETE"
+    ) {
+      const id = Number(url.pathname.split("/").pop());
+
+      if (!Number.isFinite(id)) {
+        return Response.json(
+          { error: "Invalid document ID" },
+          { status: 400 }
+        );
+      }
+
+      await env.DB
+        .prepare(
+          "DELETE FROM recognition_documents WHERE id = ?"
+        )
+        .bind(id)
+        .run();
+
+      return Response.json({ success: true });
+    }
+
     return env.ASSETS.fetch(request);
   },
 };
