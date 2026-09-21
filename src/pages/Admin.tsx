@@ -380,43 +380,202 @@ function PopupAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onS
   );
 }
 
-function NewsAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
-  const [news, setNews] = useState(store.news);
-  const [newItem, setNewItem] = useState({ title: "", content: "", date: new Date().toISOString().split("T")[0] });
-
-  const add = () => {
-    if (!newItem.title.trim()) return;
-    setNews([{ id: Date.now().toString(), ...newItem }, ...news]);
-    setNewItem({ title: "", content: "", date: new Date().toISOString().split("T")[0] });
+function NewsAdmin(_props: {
+  store: ReturnType<typeof getStore>;
+  onSave: (d: Record<string, unknown>) => void;
+}) {
+  type NewsItem = {
+    id: number;
+    title: string;
+    content: string;
+    date: string;
   };
 
-  const remove = (id: string) => setNews(news.filter((n: {id: string}) => n.id !== id));
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [newItem, setNewItem] = useState({
+    title: "",
+    content: "",
+    date: new Date().toISOString().split("T")[0],
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadNews = async () => {
+    try {
+      setError("");
+
+      const response = await fetch("/api/news");
+
+      if (!response.ok) {
+        throw new Error("News load failed");
+      }
+
+      const data = await response.json();
+
+      setNews(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      setError("News load nahi ho pa rahi.");
+    }
+  };
+
+  useEffect(() => {
+    loadNews();
+  }, []);
+
+  const add = async () => {
+    if (
+      !newItem.title.trim() ||
+      !newItem.content.trim() ||
+      !newItem.date
+    ) {
+      setError("Title, content aur date required hai.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await fetch("/api/news", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newItem),
+      });
+
+      if (!response.ok) {
+        throw new Error("News save failed");
+      }
+
+      setNewItem({
+        title: "",
+        content: "",
+        date: new Date().toISOString().split("T")[0],
+      });
+
+      await loadNews();
+    } catch (err) {
+      console.error(err);
+      setError("News save nahi hui.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const remove = async (id: number) => {
+    try {
+      setError("");
+
+      const response = await fetch(`/api/news/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Delete failed");
+      }
+
+      await loadNews();
+    } catch (err) {
+      console.error(err);
+      setError("News delete nahi hui.");
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
-      <h2 className="text-xl font-bold text-slate-900 mb-6">Manage News</h2>
+      <h2 className="text-xl font-bold text-slate-900 mb-6">
+        Manage News
+      </h2>
+
+      {error && (
+        <div className="mb-4 bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm">
+          {error}
+        </div>
+      )}
+
       <div className="space-y-3 mb-6 bg-slate-50 rounded-xl p-4">
-        <input value={newItem.title} onChange={(e) => setNewItem({ ...newItem, title: e.target.value })} placeholder="News title" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-        <textarea value={newItem.content} onChange={(e) => setNewItem({ ...newItem, content: e.target.value })} placeholder="News content" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none" rows={3} />
-        <input type="date" value={newItem.date} onChange={(e) => setNewItem({ ...newItem, date: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-        <button onClick={add} className="pill-btn-primary text-xs"><Plus size={14} className="mr-1" /> Add News</button>
+        <input
+          value={newItem.title}
+          onChange={(e) =>
+            setNewItem({
+              ...newItem,
+              title: e.target.value,
+            })
+          }
+          placeholder="News title"
+          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+        />
+
+        <textarea
+          value={newItem.content}
+          onChange={(e) =>
+            setNewItem({
+              ...newItem,
+              content: e.target.value,
+            })
+          }
+          placeholder="News content"
+          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none"
+          rows={3}
+        />
+
+        <input
+          type="date"
+          value={newItem.date}
+          onChange={(e) =>
+            setNewItem({
+              ...newItem,
+              date: e.target.value,
+            })
+          }
+          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+        />
+
+        <button
+          onClick={add}
+          disabled={loading}
+          className="pill-btn-primary text-xs"
+        >
+          <Plus size={14} className="mr-1" />
+          {loading ? "Saving..." : "Add News"}
+        </button>
       </div>
+
       <div className="space-y-3 mb-6">
-        {news.map((item: {id: string; title: string; date: string}) => (
-          <div key={item.id} className="flex items-center justify-between border border-slate-100 rounded-xl p-3">
+        {news.map((item) => (
+          <div
+            key={item.id}
+            className="flex items-center justify-between border border-slate-100 rounded-xl p-3"
+          >
             <div>
-              <p className="font-medium text-slate-900 text-sm">{item.title}</p>
-              <p className="text-xs text-slate-500">{item.date}</p>
+              <p className="font-medium text-slate-900 text-sm">
+                {item.title}
+              </p>
+
+              <p className="text-xs text-slate-500">
+                {item.date}
+              </p>
             </div>
-            <button onClick={() => remove(item.id)} className="w-8 h-8 bg-red-50 text-red-500 rounded-lg flex items-center justify-center"><Trash2 size={14} /></button>
+
+            <button
+              onClick={() => remove(item.id)}
+              className="w-8 h-8 bg-red-50 text-red-500 rounded-lg flex items-center justify-center"
+            >
+              <Trash2 size={14} />
+            </button>
           </div>
         ))}
       </div>
-      <button onClick={() => onSave({ news })} className="pill-btn-primary"><Save size={16} className="mr-2" /> Save Changes</button>
+
+      <p className="text-sm text-green-600">
+        News automatically online database me save hoti hai.
+      </p>
     </div>
   );
 }
-
 function StudyMaterialAdmin(_props: {
   store: ReturnType<typeof getStore>;
   onSave: (d: Record<string, unknown>) => void;
