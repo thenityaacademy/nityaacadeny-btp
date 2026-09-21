@@ -1027,6 +1027,68 @@ function ContentAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; o
   const [coDirectorName, setCoDirectorName] = useState(store.coDirectorName);
   const [coDirectorLocation, setCoDirectorLocation] = useState(store.coDirectorLocation);
   const [newPoint, setNewPoint] = useState("");
+  const [contentSaving, setContentSaving] = useState(false);
+  const [contentStatus, setContentStatus] = useState("");
+
+  useEffect(() => {
+    fetch("/api/site-settings")
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Settings load failed");
+        }
+
+        return response.json();
+      })
+      .then((data) => {
+        if (typeof data.aboutContent === "string") {
+          setAbout(data.aboutContent);
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+      });
+  }, []);
+
+  const savePageContent = async () => {
+    try {
+      setContentSaving(true);
+      setContentStatus("");
+
+      const response = await fetch("/api/site-settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          key: "aboutContent",
+          value: about,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("About save failed");
+      }
+
+      onSave({
+        aboutContent: about,
+        visionContent: vision,
+        visionPoints,
+        directorMessage: directorMsg,
+        coDirectorMessage: coDirectorMsg,
+        directorName,
+        directorLocation,
+        coDirectorName,
+        coDirectorLocation,
+      });
+
+      setContentStatus("Saved successfully.");
+    } catch (err) {
+      console.error(err);
+      setContentStatus("About Institute save nahi hua.");
+    } finally {
+      setContentSaving(false);
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6 space-y-6">
@@ -1090,17 +1152,20 @@ function ContentAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; o
         <textarea value={coDirectorMsg} onChange={(e) => setCoDirectorMsg(e.target.value)} rows={5} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none" />
       </div>
 
-      <button onClick={() => onSave({
-        aboutContent: about,
-        visionContent: vision,
-        visionPoints,
-        directorMessage: directorMsg,
-        coDirectorMessage: coDirectorMsg,
-        directorName,
-        directorLocation,
-        coDirectorName,
-        coDirectorLocation,
-      })} className="pill-btn-primary"><Save size={16} className="mr-2" /> Save Changes</button>
+      {contentStatus && (
+  <p className="text-sm text-green-600">
+    {contentStatus}
+  </p>
+)}
+
+<button
+  onClick={savePageContent}
+  disabled={contentSaving}
+  className="pill-btn-primary"
+>
+  <Save size={16} className="mr-2" />
+  {contentSaving ? "Saving..." : "Save Changes"}
+</button>
     </div>
   );
 }
