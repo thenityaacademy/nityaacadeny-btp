@@ -37,6 +37,35 @@ export default function Home() {
   const store = getStore();
   const [offerIndex, setOfferIndex] = useState(0);
   const [instaIndex, setInstaIndex] = useState(0);
+  const [instagramImages, setInstagramImages] = useState<string[]>(
+  store.instagramImages
+);
+
+useEffect(() => {
+  const loadInstagramImages = async () => {
+    try {
+      const response = await fetch("/api/site-settings");
+
+      if (!response.ok) {
+        throw new Error("Instagram images load failed");
+      }
+
+      const data = await response.json();
+
+      if (typeof data.instagramImages === "string") {
+        const parsed = JSON.parse(data.instagramImages);
+
+        if (Array.isArray(parsed)) {
+          setInstagramImages(parsed);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  loadInstagramImages();
+}, []);
 const [offerImages, setOfferImages] = useState<string[]>(
   store.offerImages
 );
@@ -85,12 +114,22 @@ const prevOffer = useCallback(() => {
 }, [offerImages.length]);
 
   const nextInsta = useCallback(() => {
-    setInstaIndex((i) => (i + 1) % store.instagramImages.length);
-  }, [store.instagramImages.length]);
+  if (instagramImages.length <= 1) return;
 
-  const prevInsta = useCallback(() => {
-    setInstaIndex((i) => (i - 1 + store.instagramImages.length) % store.instagramImages.length);
-  }, [store.instagramImages.length]);
+  setInstaIndex(
+    (i) => (i + 1) % instagramImages.length
+  );
+}, [instagramImages.length]);
+
+const prevInsta = useCallback(() => {
+  if (instagramImages.length <= 1) return;
+
+  setInstaIndex(
+    (i) =>
+      (i - 1 + instagramImages.length) %
+      instagramImages.length
+  );
+}, [instagramImages.length]);
 
   useEffect(() => {
   if (offerImages.length <= 1) return;
@@ -110,9 +149,21 @@ useEffect(() => {
 }, [offerImages.length, offerIndex]);
 
   useEffect(() => {
-    const timer = setInterval(nextInsta, 3500);
-    return () => clearInterval(timer);
-  }, [nextInsta]);
+  if (instagramImages.length <= 1) return;
+
+  const timer = setInterval(nextInsta, 3500);
+
+  return () => clearInterval(timer);
+}, [nextInsta, instagramImages.length]);
+
+useEffect(() => {
+  if (
+    instagramImages.length > 0 &&
+    instaIndex >= instagramImages.length
+  ) {
+    setInstaIndex(0);
+  }
+}, [instagramImages.length, instaIndex]);
 
   return (
     <div>
@@ -327,10 +378,10 @@ useEffect(() => {
                 className="flex transition-transform duration-500 ease-out h-full"
                 style={{ transform: `translateX(-${instaIndex * 100}%)` }}
               >
-                {store.instagramImages.map((img: string, i: number) => (
+                {instagramImages.map((img: string, i: number) => (
                   <div key={i} className="w-full flex-shrink-0 h-full">
                     <img
-                      src={img}
+                      src={getGoogleDriveImageUrl(img)}
                       alt={`Instagram ${i + 1}`}
                       className="w-full h-full object-cover"
                     />
@@ -348,7 +399,7 @@ useEffect(() => {
           </div>
 
           <div className="flex justify-center gap-2 mt-6">
-            {store.instagramImages.map((_: string, i: number) => (
+            {instagramImages.map((_: string, i: number) => (
               <button
                 key={i}
                 onClick={() => setInstaIndex(i)}
