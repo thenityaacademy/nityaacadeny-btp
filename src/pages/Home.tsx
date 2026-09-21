@@ -4,6 +4,20 @@ import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, BookOpen, Users, Award, TrendingUp, GraduationCap, Shield, Heart, Monitor } from "lucide-react";
 import { getStore } from "../data/store";
 import WaveDivider from "../components/WaveDivider";
+function getGoogleDriveImageUrl(url: string) {
+  if (url.includes("drive.google.com")) {
+    const fileMatch = url.match(/\/file\/d\/([^/]+)/);
+    const idMatch = url.match(/[?&]id=([^&]+)/);
+
+    const fileId = fileMatch?.[1] || idMatch?.[1];
+
+    if (fileId) {
+      return `https://drive.google.com/thumbnail?id=${fileId}&sz=w2000`;
+    }
+  }
+
+  return url;
+}
 
 const features = [
   { icon: BookOpen, title: "Quality Education", desc: "Industry-relevant curriculum designed by experts." },
@@ -178,7 +192,7 @@ useEffect(() => {
                 {offerImages.map((img: string, i: number) => (
                   <div key={i} className="w-full flex-shrink-0 flex items-center justify-center bg-white p-2 sm:p-3">
                     <img
-                      src={img}
+                      src={getGoogleDriveImageUrl(img)}
                       alt={`Offer ${i + 1}`}
                       className="max-w-full max-h-[528px] w-auto h-auto object-contain"
                     />
