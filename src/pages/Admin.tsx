@@ -263,96 +263,466 @@ function InstagramImagesAdmin({ store, onSave }: { store: ReturnType<typeof getS
   );
 }
 
-function CoursesAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
-  const [courses, setCourses] = useState(store.courses);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Record<string, string>>({});
+function CoursesAdmin(_props: {
+  store: ReturnType<typeof getStore>;
+  onSave: (d: Record<string, unknown>) => void;
+}) {
+  type Course = {
+    id: string;
+    name: string;
+    fullName: string;
+    description: string;
+    duration: string;
+    eligibility: string;
+    category: string;
+    icon: string;
+  };
+
+  const [courses, setCourses] = useState<Course[]>(
+    _props.store.courses
+  );
+
+  const [editing, setEditing] = useState<string | null>(
+    null
+  );
+
+  const [editForm, setEditForm] = useState<
+    Record<string, string>
+  >({});
+
   const [showAdd, setShowAdd] = useState(false);
-  const [newCourse, setNewCourse] = useState({
-    id: "", name: "", fullName: "", description: "", duration: "", eligibility: "", category: "vocational", icon: "GraduationCap"
+
+  const [newCourse, setNewCourse] = useState<Course>({
+    id: "",
+    name: "",
+    fullName: "",
+    description: "",
+    duration: "",
+    eligibility: "",
+    category: "vocational",
+    icon: "GraduationCap",
   });
 
-  const startEdit = (course: Record<string, string>) => {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState("");
+
+  const loadCourses = async () => {
+    try {
+      setLoading(true);
+      setStatus("");
+
+      const response = await fetch("/api/site-settings");
+
+      if (!response.ok) {
+        throw new Error("Courses load failed");
+      }
+
+      const data = await response.json();
+
+      if (typeof data.courses === "string") {
+        const parsed = JSON.parse(data.courses);
+
+        if (Array.isArray(parsed)) {
+          setCourses(parsed);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setStatus("Online courses load nahi ho pa rahe.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCourses();
+  }, []);
+
+  const startEdit = (course: Course) => {
     setEditing(course.id);
     setEditForm({ ...course });
   };
 
   const saveEdit = () => {
-    setCourses(courses.map((c: {id: string}) => c.id === editing ? { ...c, ...editForm } : c));
+    setCourses(
+      courses.map((course) =>
+        course.id === editing
+          ? {
+              ...course,
+              ...editForm,
+            }
+          : course
+      )
+    );
+
     setEditing(null);
   };
 
   const remove = (id: string) => {
-    setCourses(courses.filter((c: {id: string}) => c.id !== id));
+    setCourses(
+      courses.filter((course) => course.id !== id)
+    );
   };
 
   const addCourse = () => {
-    if (!newCourse.id.trim() || !newCourse.name.trim()) return;
+    if (
+      !newCourse.id.trim() ||
+      !newCourse.name.trim()
+    ) {
+      setStatus("Course ID aur Short Name required hai.");
+      return;
+    }
+
+    const alreadyExists = courses.some(
+      (course) => course.id === newCourse.id
+    );
+
+    if (alreadyExists) {
+      setStatus("Ye Course ID pehle se use ho rahi hai.");
+      return;
+    }
+
     setCourses([...courses, { ...newCourse }]);
-    setNewCourse({ id: "", name: "", fullName: "", description: "", duration: "", eligibility: "", category: "vocational", icon: "GraduationCap" });
+
+    setNewCourse({
+      id: "",
+      name: "",
+      fullName: "",
+      description: "",
+      duration: "",
+      eligibility: "",
+      category: "vocational",
+      icon: "GraduationCap",
+    });
+
     setShowAdd(false);
+    setStatus(
+      "Course list me add ho gaya. Ab Save Changes dabayein."
+    );
+  };
+
+  const saveCoursesOnline = async () => {
+    try {
+      setSaving(true);
+      setStatus("");
+
+      const response = await fetch("/api/site-settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          key: "courses",
+          value: JSON.stringify(courses),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Courses save failed");
+      }
+
+      setStatus(
+        "Courses online database me save ho gaye."
+      );
+    } catch (err) {
+      console.error(err);
+      setStatus("Courses save nahi hue.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-slate-900">Manage Courses</h2>
-        <button onClick={() => setShowAdd(!showAdd)} className="pill-btn-primary text-xs">
-          <Plus size={14} className="mr-1" /> {showAdd ? "Cancel" : "Add Course"}
+        <h2 className="text-xl font-bold text-slate-900">
+          Manage Courses
+        </h2>
+
+        <button
+          onClick={() => setShowAdd(!showAdd)}
+          className="pill-btn-primary text-xs"
+        >
+          <Plus size={14} className="mr-1" />
+          {showAdd ? "Cancel" : "Add Course"}
         </button>
       </div>
 
-      {showAdd && (
-        <div className="bg-slate-50 rounded-xl p-4 mb-6 space-y-3">
-          <h3 className="font-semibold text-slate-900 text-sm">Add New Course</h3>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <input value={newCourse.id} onChange={(e) => setNewCourse({ ...newCourse, id: e.target.value })} placeholder="Course ID (unique)" className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-            <input value={newCourse.name} onChange={(e) => setNewCourse({ ...newCourse, name: e.target.value })} placeholder="Short Name (e.g. BCA)" className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-            <input value={newCourse.fullName} onChange={(e) => setNewCourse({ ...newCourse, fullName: e.target.value })} placeholder="Full Name" className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-            <input value={newCourse.duration} onChange={(e) => setNewCourse({ ...newCourse, duration: e.target.value })} placeholder="Duration (e.g. 3 Years)" className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-            <input value={newCourse.eligibility} onChange={(e) => setNewCourse({ ...newCourse, eligibility: e.target.value })} placeholder="Eligibility" className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-            <select value={newCourse.category} onChange={(e) => setNewCourse({ ...newCourse, category: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-200 text-sm">
-              <option value="vocational">Vocational</option>
-              <option value="skill">Skill</option>
-              <option value="university">University</option>
-            </select>
-          </div>
-          <textarea value={newCourse.description} onChange={(e) => setNewCourse({ ...newCourse, description: e.target.value })} placeholder="Description" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none" rows={2} />
-          <button onClick={addCourse} className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium">Add Course</button>
+      {status && (
+        <div className="mb-4 bg-slate-50 text-slate-700 px-4 py-3 rounded-xl text-sm">
+          {status}
         </div>
       )}
 
-      <div className="space-y-4 mb-6">
-        {courses.map((course: Record<string, string>) => (
-          <div key={course.id} className="border border-slate-100 rounded-xl p-4">
-            {editing === course.id ? (
-              <div className="space-y-3">
-                <input value={editForm.name || ""} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" placeholder="Name" />
-                <input value={editForm.fullName || ""} onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" placeholder="Full Name" />
-                <input value={editForm.duration || ""} onChange={(e) => setEditForm({ ...editForm, duration: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" placeholder="Duration" />
-                <input value={editForm.eligibility || ""} onChange={(e) => setEditForm({ ...editForm, eligibility: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" placeholder="Eligibility" />
-                <textarea value={editForm.description || ""} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none" rows={2} placeholder="Description" />
-                <div className="flex gap-2">
-                  <button onClick={saveEdit} className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium">Save</button>
-                  <button onClick={() => setEditing(null)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium">Cancel</button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold text-slate-900">{course.name}</h4>
-                  <p className="text-sm text-slate-500">{course.fullName} • {course.duration}</p>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => startEdit(course)} className="px-3 py-1.5 bg-primary-light text-primary rounded-lg text-xs font-medium">Edit</button>
-                  <button onClick={() => remove(course.id)} className="px-3 py-1.5 bg-red-50 text-red-500 rounded-lg text-xs font-medium"><Trash2 size={14} /></button>
-                </div>
-              </div>
-            )}
+      {showAdd && (
+        <div className="bg-slate-50 rounded-xl p-4 mb-6 space-y-3">
+          <h3 className="font-semibold text-slate-900 text-sm">
+            Add New Course
+          </h3>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <input
+              value={newCourse.id}
+              onChange={(e) =>
+                setNewCourse({
+                  ...newCourse,
+                  id: e.target.value,
+                })
+              }
+              placeholder="Course ID (unique)"
+              className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
+            />
+
+            <input
+              value={newCourse.name}
+              onChange={(e) =>
+                setNewCourse({
+                  ...newCourse,
+                  name: e.target.value,
+                })
+              }
+              placeholder="Short Name (e.g. BCA)"
+              className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
+            />
+
+            <input
+              value={newCourse.fullName}
+              onChange={(e) =>
+                setNewCourse({
+                  ...newCourse,
+                  fullName: e.target.value,
+                })
+              }
+              placeholder="Full Name"
+              className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
+            />
+
+            <input
+              value={newCourse.duration}
+              onChange={(e) =>
+                setNewCourse({
+                  ...newCourse,
+                  duration: e.target.value,
+                })
+              }
+              placeholder="Duration (e.g. 1 Year)"
+              className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
+            />
+
+            <input
+              value={newCourse.eligibility}
+              onChange={(e) =>
+                setNewCourse({
+                  ...newCourse,
+                  eligibility: e.target.value,
+                })
+              }
+              placeholder="Eligibility"
+              className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
+            />
+
+            <select
+              value={newCourse.category}
+              onChange={(e) =>
+                setNewCourse({
+                  ...newCourse,
+                  category: e.target.value,
+                })
+              }
+              className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
+            >
+              <option value="vocational">
+                Vocational
+              </option>
+
+              <option value="skill">
+                Skill
+              </option>
+
+              <option value="university">
+                University
+              </option>
+            </select>
           </div>
-        ))}
-      </div>
-      <button onClick={() => onSave({ courses })} className="pill-btn-primary"><Save size={16} className="mr-2" /> Save Changes</button>
+
+          <textarea
+            value={newCourse.description}
+            onChange={(e) =>
+              setNewCourse({
+                ...newCourse,
+                description: e.target.value,
+              })
+            }
+            placeholder="Description"
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none"
+            rows={3}
+          />
+
+          <button
+            onClick={addCourse}
+            className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium"
+          >
+            Add Course
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-slate-500 mb-6">
+          Loading courses...
+        </p>
+      ) : (
+        <div className="space-y-4 mb-6">
+          {courses.map((course) => (
+            <div
+              key={course.id}
+              className="border border-slate-100 rounded-xl p-4"
+            >
+              {editing === course.id ? (
+                <div className="space-y-3">
+                  <input
+                    value={editForm.name || ""}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        name: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+                    placeholder="Name"
+                  />
+
+                  <input
+                    value={editForm.fullName || ""}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        fullName: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+                    placeholder="Full Name"
+                  />
+
+                  <input
+                    value={editForm.duration || ""}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        duration: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+                    placeholder="Duration"
+                  />
+
+                  <input
+                    value={editForm.eligibility || ""}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        eligibility: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+                    placeholder="Eligibility"
+                  />
+
+                  <select
+                    value={editForm.category || "vocational"}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        category: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+                  >
+                    <option value="vocational">
+                      Vocational
+                    </option>
+                    <option value="skill">Skill</option>
+                    <option value="university">
+                      University
+                    </option>
+                  </select>
+
+                  <textarea
+                    value={editForm.description || ""}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        description: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none"
+                    rows={3}
+                    placeholder="Description"
+                  />
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={saveEdit}
+                      className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium"
+                    >
+                      Save
+                    </button>
+
+                    <button
+                      onClick={() => setEditing(null)}
+                      className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-bold text-slate-900">
+                      {course.name}
+                    </h4>
+
+                    <p className="text-sm text-slate-500">
+                      {course.fullName} • {course.duration}
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => startEdit(course)}
+                      className="px-3 py-1.5 bg-primary-light text-primary rounded-lg text-xs font-medium"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      onClick={() => remove(course.id)}
+                      className="px-3 py-1.5 bg-red-50 text-red-500 rounded-lg text-xs font-medium"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button
+        onClick={saveCoursesOnline}
+        disabled={saving}
+        className="pill-btn-primary"
+      >
+        <Save size={16} className="mr-2" />
+        {saving ? "Saving..." : "Save Changes"}
+      </button>
+
+      <p className="text-sm text-green-600 mt-3">
+        Courses online database me save honge.
+      </p>
     </div>
   );
 }
