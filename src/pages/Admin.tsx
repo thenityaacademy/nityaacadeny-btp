@@ -2074,37 +2074,120 @@ function RecognitionAdmin(_props: {
     </div>
   );
 }
-function ContentAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
-  const [about, setAbout] = useState(store.aboutContent);
-  const [vision, setVision] = useState(store.visionContent);
-  const [visionPoints, setVisionPoints] = useState<string[]>(store.visionPoints);
-  const [directorMsg, setDirectorMsg] = useState(store.directorMessage);
-  const [coDirectorMsg, setCoDirectorMsg] = useState(store.coDirectorMessage);
-  const [directorName, setDirectorName] = useState(store.directorName);
-  const [directorLocation, setDirectorLocation] = useState(store.directorLocation);
-  const [coDirectorName, setCoDirectorName] = useState(store.coDirectorName);
-  const [coDirectorLocation, setCoDirectorLocation] = useState(store.coDirectorLocation);
+function ContentAdmin(_props: {
+  store: ReturnType<typeof getStore>;
+  onSave: (d: Record<string, unknown>) => void;
+}) {
+  const [about, setAbout] = useState(
+    _props.store.aboutContent
+  );
+
+  const [vision, setVision] = useState(
+    _props.store.visionContent
+  );
+
+  const [visionPoints, setVisionPoints] = useState<string[]>(
+    _props.store.visionPoints
+  );
+
+  const [directorMsg, setDirectorMsg] = useState(
+    _props.store.directorMessage
+  );
+
+  const [coDirectorMsg, setCoDirectorMsg] = useState(
+    _props.store.coDirectorMessage
+  );
+
+  const [directorName, setDirectorName] = useState(
+    _props.store.directorName
+  );
+
+  const [directorLocation, setDirectorLocation] = useState(
+    _props.store.directorLocation
+  );
+
+  const [coDirectorName, setCoDirectorName] = useState(
+    _props.store.coDirectorName
+  );
+
+  const [coDirectorLocation, setCoDirectorLocation] = useState(
+    _props.store.coDirectorLocation
+  );
+
   const [newPoint, setNewPoint] = useState("");
+  const [loading, setLoading] = useState(true);
   const [contentSaving, setContentSaving] = useState(false);
   const [contentStatus, setContentStatus] = useState("");
 
   useEffect(() => {
-    fetch("/api/site-settings")
-      .then((response) => {
+    const loadPageContent = async () => {
+      try {
+        setLoading(true);
+        setContentStatus("");
+
+        const response = await fetch("/api/site-settings");
+
         if (!response.ok) {
-          throw new Error("Settings load failed");
+          throw new Error("Page content load failed");
         }
 
-        return response.json();
-      })
-      .then((data) => {
+        const data = await response.json();
+
         if (typeof data.aboutContent === "string") {
           setAbout(data.aboutContent);
         }
-      })
-      .catch((err) => {
+
+        if (typeof data.visionContent === "string") {
+          setVision(data.visionContent);
+        }
+
+        if (typeof data.visionPoints === "string") {
+          try {
+            const parsed = JSON.parse(data.visionPoints);
+
+            if (Array.isArray(parsed)) {
+              setVisionPoints(parsed);
+            }
+          } catch (err) {
+            console.error(err);
+          }
+        }
+
+        if (typeof data.directorMessage === "string") {
+          setDirectorMsg(data.directorMessage);
+        }
+
+        if (typeof data.coDirectorMessage === "string") {
+          setCoDirectorMsg(data.coDirectorMessage);
+        }
+
+        if (typeof data.directorName === "string") {
+          setDirectorName(data.directorName);
+        }
+
+        if (typeof data.directorLocation === "string") {
+          setDirectorLocation(data.directorLocation);
+        }
+
+        if (typeof data.coDirectorName === "string") {
+          setCoDirectorName(data.coDirectorName);
+        }
+
+        if (typeof data.coDirectorLocation === "string") {
+          setCoDirectorLocation(data.coDirectorLocation);
+        }
+      } catch (err) {
         console.error(err);
-      });
+
+        setContentStatus(
+          "Online page content load nahi ho raha."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPageContent();
   }, []);
 
   const savePageContent = async () => {
@@ -2112,118 +2195,323 @@ function ContentAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; o
       setContentSaving(true);
       setContentStatus("");
 
-      const response = await fetch("/api/site-settings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      const settings = [
+        {
           key: "aboutContent",
           value: about,
-        }),
-      });
+        },
+        {
+          key: "visionContent",
+          value: vision,
+        },
+        {
+          key: "visionPoints",
+          value: JSON.stringify(visionPoints),
+        },
+        {
+          key: "directorMessage",
+          value: directorMsg,
+        },
+        {
+          key: "directorName",
+          value: directorName,
+        },
+        {
+          key: "directorLocation",
+          value: directorLocation,
+        },
+        {
+          key: "coDirectorMessage",
+          value: coDirectorMsg,
+        },
+        {
+          key: "coDirectorName",
+          value: coDirectorName,
+        },
+        {
+          key: "coDirectorLocation",
+          value: coDirectorLocation,
+        },
+      ];
 
-      if (!response.ok) {
-        throw new Error("About save failed");
+      const responses = await Promise.all(
+        settings.map((item) =>
+          fetch("/api/site-settings", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(item),
+          })
+        )
+      );
+
+      if (responses.some((response) => !response.ok)) {
+        throw new Error("Page content save failed");
       }
 
-      onSave({
-        aboutContent: about,
-        visionContent: vision,
-        visionPoints,
-        directorMessage: directorMsg,
-        coDirectorMessage: coDirectorMsg,
-        directorName,
-        directorLocation,
-        coDirectorName,
-        coDirectorLocation,
-      });
-
-      setContentStatus("Saved successfully.");
+      setContentStatus(
+        "Page content online database me save ho gaya."
+      );
     } catch (err) {
       console.error(err);
-      setContentStatus("About Institute save nahi hua.");
+
+      setContentStatus(
+        "Page content save nahi hua."
+      );
     } finally {
       setContentSaving(false);
     }
   };
 
+  const addVisionPoint = () => {
+    const point = newPoint.trim();
+
+    if (!point) return;
+
+    setVisionPoints([
+      ...visionPoints,
+      point,
+    ]);
+
+    setNewPoint("");
+  };
+
+  const removeVisionPoint = (index: number) => {
+    setVisionPoints(
+      visionPoints.filter(
+        (_, i) => i !== index
+      )
+    );
+  };
+
   return (
     <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6 space-y-6">
-      <h2 className="text-xl font-bold text-slate-900">Page Content</h2>
 
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">About Institute</label>
-        <textarea value={about} onChange={(e) => setAbout(e.target.value)} rows={5} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none" />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Vision Statement</label>
-        <textarea value={vision} onChange={(e) => setVision(e.target.value)} rows={4} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none" />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Vision Points</label>
-        <div className="flex gap-2 mb-3">
-          <input value={newPoint} onChange={(e) => setNewPoint(e.target.value)} placeholder="Add new point" className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-          <button onClick={() => { if (newPoint.trim()) { setVisionPoints([...visionPoints, newPoint]); setNewPoint(""); } }} className="pill-btn-primary text-xs"><Plus size={14} /></button>
-        </div>
-        <div className="space-y-2">
-          {visionPoints.map((p, i) => (
-            <div key={i} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
-              <span className="text-sm text-slate-700">{p}</span>
-              <button onClick={() => setVisionPoints(visionPoints.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600"><X size={14} /></button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="border-t border-slate-100 pt-6">
-        <h3 className="font-bold text-slate-900 mb-4">Director's Information</h3>
-        <div className="grid sm:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Director Name</label>
-            <input value={directorName} onChange={(e) => setDirectorName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Director Location</label>
-            <input value={directorLocation} onChange={(e) => setDirectorLocation(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm" />
-          </div>
-        </div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Director's Message</label>
-        <textarea value={directorMsg} onChange={(e) => setDirectorMsg(e.target.value)} rows={5} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none" />
-      </div>
-
-      <div className="border-t border-slate-100 pt-6">
-        <h3 className="font-bold text-slate-900 mb-4">Co-Director's Information</h3>
-        <div className="grid sm:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Co-Director Name</label>
-            <input value={coDirectorName} onChange={(e) => setCoDirectorName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Co-Director Location</label>
-            <input value={coDirectorLocation} onChange={(e) => setCoDirectorLocation(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm" />
-          </div>
-        </div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Co-Director's Message</label>
-        <textarea value={coDirectorMsg} onChange={(e) => setCoDirectorMsg(e.target.value)} rows={5} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none" />
-      </div>
+      <h2 className="text-xl font-bold text-slate-900">
+        Page Content
+      </h2>
 
       {contentStatus && (
-  <p className="text-sm text-green-600">
-    {contentStatus}
-  </p>
-)}
+        <div className="bg-slate-50 text-slate-700 px-4 py-3 rounded-xl text-sm">
+          {contentStatus}
+        </div>
+      )}
 
-<button
-  onClick={savePageContent}
-  disabled={contentSaving}
-  className="pill-btn-primary"
->
-  <Save size={16} className="mr-2" />
-  {contentSaving ? "Saving..." : "Save Changes"}
-</button>
+      {loading ? (
+        <p className="text-sm text-slate-500">
+          Loading page content...
+        </p>
+      ) : (
+        <>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              About Institute
+            </label>
+
+            <textarea
+              value={about}
+              onChange={(e) =>
+                setAbout(e.target.value)
+              }
+              rows={5}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Vision Statement
+            </label>
+
+            <textarea
+              value={vision}
+              onChange={(e) =>
+                setVision(e.target.value)
+              }
+              rows={4}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Vision Points
+            </label>
+
+            <div className="flex gap-2 mb-3">
+
+              <input
+                value={newPoint}
+                onChange={(e) =>
+                  setNewPoint(e.target.value)
+                }
+                placeholder="Add new point"
+                className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm"
+              />
+
+              <button
+                onClick={addVisionPoint}
+                className="pill-btn-primary text-xs"
+              >
+                <Plus size={14} />
+              </button>
+
+            </div>
+
+            <div className="space-y-2">
+
+              {visionPoints.map((point, i) => (
+
+                <div
+                  key={i}
+                  className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"
+                >
+
+                  <span className="text-sm text-slate-700">
+                    {point}
+                  </span>
+
+                  <button
+                    onClick={() =>
+                      removeVisionPoint(i)
+                    }
+                    className="text-red-400 hover:text-red-600"
+                  >
+                    <X size={14} />
+                  </button>
+
+                </div>
+
+              ))}
+
+            </div>
+          </div>
+
+          <div className="border-t border-slate-100 pt-6">
+
+            <h3 className="font-bold text-slate-900 mb-4">
+              Director's Information
+            </h3>
+
+            <div className="grid sm:grid-cols-2 gap-4 mb-4">
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Director Name
+                </label>
+
+                <input
+                  value={directorName}
+                  onChange={(e) =>
+                    setDirectorName(e.target.value)
+                  }
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Director Location
+                </label>
+
+                <input
+                  value={directorLocation}
+                  onChange={(e) =>
+                    setDirectorLocation(e.target.value)
+                  }
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+                />
+              </div>
+
+            </div>
+
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Director's Message
+            </label>
+
+            <textarea
+              value={directorMsg}
+              onChange={(e) =>
+                setDirectorMsg(e.target.value)
+              }
+              rows={5}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none"
+            />
+
+          </div>
+
+          <div className="border-t border-slate-100 pt-6">
+
+            <h3 className="font-bold text-slate-900 mb-4">
+              Co-Director's Information
+            </h3>
+
+            <div className="grid sm:grid-cols-2 gap-4 mb-4">
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Co-Director Name
+                </label>
+
+                <input
+                  value={coDirectorName}
+                  onChange={(e) =>
+                    setCoDirectorName(e.target.value)
+                  }
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Co-Director Location
+                </label>
+
+                <input
+                  value={coDirectorLocation}
+                  onChange={(e) =>
+                    setCoDirectorLocation(e.target.value)
+                  }
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+                />
+              </div>
+
+            </div>
+
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Co-Director's Message
+            </label>
+
+            <textarea
+              value={coDirectorMsg}
+              onChange={(e) =>
+                setCoDirectorMsg(e.target.value)
+              }
+              rows={5}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none"
+            />
+
+          </div>
+        </>
+      )}
+
+      <button
+        onClick={savePageContent}
+        disabled={contentSaving || loading}
+        className="pill-btn-primary"
+      >
+        <Save size={16} className="mr-2" />
+
+        {contentSaving
+          ? "Saving..."
+          : "Save Changes"}
+      </button>
+
+      <p className="text-sm text-green-600">
+        About, Vision aur Director information online database me save hogi.
+      </p>
+
     </div>
   );
 }
