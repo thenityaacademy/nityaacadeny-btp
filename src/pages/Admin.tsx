@@ -197,16 +197,17 @@ if (checkingSession) {
                 {loginError}
               </div>
             )}
-            <button type="submit" className="w-full pill-btn-primary py-3.5">
-              <LogIn size={18} className="mr-2" /> Login
-            </button>
+            <button
+  type="submit"
+  disabled={loggingIn}
+  className="w-full pill-btn-primary py-3.5 disabled:opacity-60 disabled:cursor-not-allowed"
+>
+  <LogIn size={18} className="mr-2" />
+  {loggingIn ? "Logging in..." : "Login"}
+</button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-slate-100 text-center">
-            <p className="text-xs text-slate-400">
-              Reset Password: Security ID "Bhadra Center Name: BINT BHADRA"
-            </p>
-          </div>
+         
         </motion.div>
       </div>
     );
@@ -222,9 +223,7 @@ if (checkingSession) {
             <h1 className="font-bold text-slate-900">Admin Dashboard</h1>
           </div>
           <button
-            onClick={() => {
-              sessionStorage.removeItem("nitya_admin_session");
-              setLoggedIn(false);
+            onClick={handleLogout}
             }}
             className="text-sm text-slate-500 hover:text-red-500 transition-colors"
           >
