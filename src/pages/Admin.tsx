@@ -1673,26 +1673,210 @@ function StudyMaterialAdmin(_props: {
     </div>
   );
 }
-function ScholarshipAdmin({ store, onSave }: { store: ReturnType<typeof getStore>; onSave: (d: Record<string, unknown>) => void }) {
-  const [content, setContent] = useState(store.scholarshipContent);
-  const [endDate, setEndDate] = useState(store.scholarshipEndDate);
+function ScholarshipAdmin(_props: {
+  store: ReturnType<typeof getStore>;
+  onSave: (d: Record<string, unknown>) => void;
+}) {
+  const getGoogleDriveImageUrl = (url: string) => {
+    if (url.includes("drive.google.com")) {
+      const fileMatch = url.match(/\/file\/d\/([^/]+)/);
+      const idMatch = url.match(/[?&]id=([^&]+)/);
+
+      const fileId = fileMatch?.[1] || idMatch?.[1];
+
+      if (fileId) {
+        return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`;
+      }
+    }
+
+    return url;
+  };
+
+  const [content, setContent] = useState(
+    _props.store.scholarshipContent
+  );
+
+  const [endDate, setEndDate] = useState(
+    _props.store.scholarshipEndDate
+  );
+
+  const [imageUrl, setImageUrl] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    const loadScholarship = async () => {
+      try {
+        setLoading(true);
+        setStatus("");
+
+        const response = await fetch("/api/site-settings");
+
+        if (!response.ok) {
+          throw new Error("Scholarship load failed");
+        }
+
+        const data = await response.json();
+
+        if (typeof data.scholarshipContent === "string") {
+          setContent(data.scholarshipContent);
+        }
+
+        if (typeof data.scholarshipEndDate === "string") {
+          setEndDate(data.scholarshipEndDate);
+        }
+
+        if (typeof data.scholarshipImage === "string") {
+          setImageUrl(data.scholarshipImage);
+        }
+      } catch (err) {
+        console.error(err);
+        setStatus(
+          "Online scholarship settings load nahi ho rahi."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadScholarship();
+  }, []);
+
+  const saveScholarship = async () => {
+    try {
+      setSaving(true);
+      setStatus("");
+
+      const values = [
+        {
+          key: "scholarshipContent",
+          value: content,
+        },
+        {
+          key: "scholarshipEndDate",
+          value: endDate,
+        },
+        {
+          key: "scholarshipImage",
+          value: imageUrl.trim(),
+        },
+      ];
+
+      const responses = await Promise.all(
+        values.map((item) =>
+          fetch("/api/site-settings", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(item),
+          })
+        )
+      );
+
+      if (responses.some((response) => !response.ok)) {
+        throw new Error("Scholarship save failed");
+      }
+
+      setStatus(
+        "Scholarship settings online database me save ho gayi."
+      );
+    } catch (err) {
+      console.error(err);
+      setStatus("Scholarship settings save nahi hui.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl card-shadow border border-slate-100 p-6">
-      <h2 className="text-xl font-bold text-slate-900 mb-6">Scholarship Settings</h2>
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Scholarship End Date</label>
-        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm" />
-      </div>
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Scholarship Content</label>
-        <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={12} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none" />
-      </div>
-      <button onClick={() => onSave({ scholarshipContent: content, scholarshipEndDate: endDate })} className="pill-btn-primary"><Save size={16} className="mr-2" /> Save Changes</button>
+
+      <h2 className="text-xl font-bold text-slate-900 mb-6">
+        Scholarship Settings
+      </h2>
+
+      {status && (
+        <div className="mb-4 bg-slate-50 text-slate-700 px-4 py-3 rounded-xl text-sm">
+          {status}
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-slate-500">
+          Loading scholarship settings...
+        </p>
+      ) : (
+        <>
+          <div className="mb-5">
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Scholarship Image - Google Drive Link
+            </label>
+
+            <input
+              type="text"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="Paste Google Drive image link"
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+            />
+          </div>
+
+          {imageUrl.trim() && (
+            <div className="mb-6 bg-slate-50 rounded-xl p-3">
+              <img
+                src={getGoogleDriveImageUrl(imageUrl)}
+                alt="Scholarship Preview"
+                className="w-full max-w-sm mx-auto rounded-xl object-contain"
+              />
+            </div>
+          )}
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Scholarship End Date
+            </label>
+
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+            />
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Scholarship Content
+            </label>
+
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              rows={12}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm resize-none"
+            />
+          </div>
+        </>
+      )}
+
+      <button
+        onClick={saveScholarship}
+        disabled={saving || loading}
+        className="pill-btn-primary"
+      >
+        <Save size={16} className="mr-2" />
+        {saving ? "Saving..." : "Save Changes"}
+      </button>
+
+      <p className="text-sm text-green-600 mt-3">
+        Image, End Date aur Content online database me save honge.
+      </p>
+
     </div>
   );
 }
-
 function RecognitionAdmin(_props: {
   store: ReturnType<typeof getStore>;
   onSave: (d: Record<string, unknown>) => void;
