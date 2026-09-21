@@ -128,12 +128,7 @@ export default function Admin() {
     setLocalStore(updated);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-  };
-  const handleSave = (data: Record<string, unknown>) => {
-    const updated = setStore(data);
-    setLocalStore(updated);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  
   };
 if (checkingSession) {
   return (
@@ -224,7 +219,6 @@ if (checkingSession) {
           </div>
           <button
             onClick={handleLogout}
-            }}
             className="text-sm text-slate-500 hover:text-red-500 transition-colors"
           >
             Logout
