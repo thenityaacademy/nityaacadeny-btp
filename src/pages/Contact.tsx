@@ -6,9 +6,25 @@ export default function Contact() {
   const [formData, setFormData] = useState({ name: "", message: "" });
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    window.open("https://wa.me/message/ZFFLAV4QKSZJA1", "_blank", "noopener,noreferrer");
-  };
+  e.preventDefault();
+
+  const whatsappMessage = `Hello Nitya Academy,
+
+Name: ${formData.name}
+
+Message: ${formData.message}`;
+
+  const whatsappUrl =
+  `https://wa.me/919802813444?text=${encodeURIComponent(
+    whatsappMessage
+  )}`;
+
+  window.open(
+    whatsappUrl,
+    "_blank",
+    "noopener,noreferrer"
+  );
+};
 
   return (
     <div className="min-h-screen">
