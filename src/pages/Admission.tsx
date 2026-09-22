@@ -3,8 +3,16 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { CheckCircle, Calendar, User, Phone, MapPin, BookOpen, GraduationCap } from "lucide-react";
 import { DEFAULTS } from "../data/store";
+import { useSearchParams } from "react-router-dom";
 
 export default function Admission() {
+  const [searchParams] = useSearchParams();
+
+const [submitting, setSubmitting] =
+  useState(false);
+
+const source =
+  searchParams.get("source") || "Direct";
   const [courses, setCourses] = useState(
   DEFAULTS.courses
 );
@@ -53,9 +61,42 @@ useEffect(() => {
     mobile: "",
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-  
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  if (submitting) return;
+
+  setSubmitting(true);
+
+  try {
+    const selectedCourse = courses.find(
+      (course) => course.id === formData.course
+    );
+
+    const courseName = selectedCourse
+      ? `${selectedCourse.name} - ${selectedCourse.fullName}`
+      : formData.course;
+
+    const response = await fetch("/api/admission", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...formData,
+        course: courseName,
+        source,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(
+        result.error || "Application save failed"
+      );
+    }
+
     try {
       await emailjs.send(
         "service_nitya",
@@ -65,34 +106,44 @@ useEffect(() => {
           fatherName: formData.fatherName,
           dob: formData.dob,
           qualification: formData.qualification,
-          course: formData.course,
+          course: courseName,
           address: formData.address,
           mobile: formData.mobile,
         },
         "v0oG11RR1L6rHEWpK"
       );
-  
-      setSubmitted(true);
-  
-      setTimeout(() => {
-        setSubmitted(false);
-        setFormData({
-          name: "",
-          fatherName: "",
-          dob: "",
-          qualification: "",
-          course: "",
-          address: "",
-          mobile: "",
-        });
-      }, 4000);
-  
-    } catch (error) {
-      console.log(error);
-      alert("Email send nahi hui");
+    } catch (emailError) {
+      console.error(
+        "Email notification failed:",
+        emailError
+      );
     }
-  };
 
+    setSubmitted(true);
+
+    setTimeout(() => {
+      setSubmitted(false);
+
+      setFormData({
+        name: "",
+        fatherName: "",
+        dob: "",
+        qualification: "",
+        course: "",
+        address: "",
+        mobile: "",
+      });
+    }, 4000);
+  } catch (error) {
+    console.error(error);
+
+    alert(
+      "Application submit nahi hui. Please dobara try karein."
+    );
+  } finally {
+    setSubmitting(false);
+  }
+};
   return (
     <div className="min-h-screen">
       {/* Page Header */}
@@ -239,9 +290,15 @@ useEffect(() => {
                   />
                 </div>
 
-                <button type="submit" className="w-full pill-btn-primary py-3.5 text-base">
-                  Submit Application
-                </button>
+                <button
+  type="submit"
+  disabled={submitting}
+  className="w-full pill-btn-primary py-3.5 text-base disabled:opacity-60 disabled:cursor-not-allowed"
+>
+  {submitting
+    ? "Submitting..."
+    : "Submit Application"}
+</button>
               </form>
             )}
           </motion.div>
