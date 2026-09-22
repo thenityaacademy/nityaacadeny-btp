@@ -52,14 +52,19 @@ const categories = [
 ];
 
 export default function Courses() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const initialCat =
     searchParams.get("cat") || "all";
 
   const [activeCategory, setActiveCategory] =
     useState(initialCat);
+useEffect(() => {
+  const category =
+    searchParams.get("cat") || "all";
 
+  setActiveCategory(category);
+}, [searchParams]);
   const [courses, setCourses] = useState<Course[]>(
     DEFAULTS.courses
   );
@@ -148,9 +153,15 @@ export default function Courses() {
             {categories.map((cat) => (
               <button
                 key={cat.id}
-                onClick={() =>
-                  setActiveCategory(cat.id)
-                }
+                onClick={() => {
+  if (cat.id === "all") {
+    setSearchParams({});
+  } else {
+    setSearchParams({
+      cat: cat.id,
+    });
+  }
+}}
                 className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${
                   activeCategory === cat.id
                     ? "bg-primary text-white shadow-md"
