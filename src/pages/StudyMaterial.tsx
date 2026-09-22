@@ -31,11 +31,21 @@ export default function StudyMaterial() {
 
   const initialTab = searchParams.get("tab") || "notes";
   const [activeTab, setActiveTab] = useState(initialTab);
-  useEffect(() => {
+ useEffect(() => {
   const tab =
     searchParams.get("tab") || "notes";
 
-  setActiveTab(tab);
+  const validTabs = [
+    "notes",
+    "syllabus",
+    "previous-papers",
+  ];
+
+  setActiveTab(
+    validTabs.includes(tab)
+      ? tab
+      : "notes"
+  );
 }, [searchParams]);
 
   const [notes, setNotes] = useState<Doc[]>([]);
