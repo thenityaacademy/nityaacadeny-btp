@@ -1,11 +1,47 @@
 import emailjs from '@emailjs/browser';
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { CheckCircle, Calendar, User, Phone, MapPin, BookOpen, GraduationCap } from "lucide-react";
-import { getStore } from "../data/store";
-const courses = getStore().courses;
+import { DEFAULTS } from "../data/store";
 
 export default function Admission() {
+  const [courses, setCourses] = useState(
+  DEFAULTS.courses
+);
+
+useEffect(() => {
+  const loadCourses = async () => {
+    try {
+      const response = await fetch(
+        "/api/site-settings"
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          "Courses load failed"
+        );
+      }
+
+      const data = await response.json();
+
+      if (
+        typeof data.courses === "string"
+      ) {
+        const parsed = JSON.parse(
+          data.courses
+        );
+
+        if (Array.isArray(parsed)) {
+          setCourses(parsed);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  loadCourses();
+}, []);
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
