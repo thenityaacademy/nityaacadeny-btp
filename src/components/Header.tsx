@@ -73,7 +73,7 @@ export default function Header() {
         <div className="flex items-center justify-between h-16 lg:h-20">
           <Link to="/" className="flex items-center gap-3">
             <img
-              src="https://i.ibb.co/C5MHjQj9/nitya-banner-p.png"
+              src="https://drive.google.com/thumbnail?id=1eH75kZyla2u4JOZ-Th3QlMvbidK0KbNW&sz=w1600"
               alt="Nitya Academy"
               className="h-10 lg:h-12 w-auto"
             />
