@@ -31,6 +31,12 @@ export default function StudyMaterial() {
 
   const initialTab = searchParams.get("tab") || "notes";
   const [activeTab, setActiveTab] = useState(initialTab);
+  useEffect(() => {
+  const tab =
+    searchParams.get("tab") || "notes";
+
+  setActiveTab(tab);
+}, [searchParams]);
 
   const [notes, setNotes] = useState<Doc[]>([]);
   const [syllabus, setSyllabus] = useState<Doc[]>([]);
