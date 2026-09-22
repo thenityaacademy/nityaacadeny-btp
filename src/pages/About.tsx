@@ -63,7 +63,7 @@ export default function About() {
               transition={{ duration: 0.5 }}
             >
               <img
-                src="https://i.ibb.co/C5MHjQj9/nitya-banner-p.png"
+                src="https://drive.google.com/thumbnail?id=1eH75kZyla2u4JOZ-Th3QlMvbidK0KbNW&sz=w1600"
                 alt="Nitya Academy"
                 className="w-full max-w-md mx-auto rounded-2xl card-shadow"
               />
