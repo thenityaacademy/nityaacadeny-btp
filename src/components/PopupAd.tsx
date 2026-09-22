@@ -19,8 +19,13 @@ function getGoogleDriveImageUrl(url: string) {
 export default function PopupAd() {
   const [visible, setVisible] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
+  const popupAlreadyShown =
+  sessionStorage.getItem("nitya_popup_shown") === "true";
 
   useEffect(() => {
+    if (popupAlreadyShown) {
+  return;
+}
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -49,11 +54,16 @@ export default function PopupAd() {
         ) {
           setImageUrl(popupImage);
 
-          timer = setTimeout(() => {
-            if (active) {
-              setVisible(true);
-            }
-          }, 2000);
+         timer = setTimeout(() => {
+  if (active) {
+    sessionStorage.setItem(
+      "nitya_popup_shown",
+      "true"
+    );
+
+    setVisible(true);
+  }
+}, 2000);
         }
       } catch (err) {
         console.error(err);
