@@ -236,7 +236,7 @@ useEffect(() => {
             >
               <div className="absolute inset-0 bg-primary/10 rounded-full blur-3xl scale-75" />
               <img
-                src="https://i.ibb.co/Q70zyLfh/the-png-model.png"
+                src="https://drive.google.com/thumbnail?id=13UtCW9ScOeE4kawBZx3lGcdiBzO7d8cU&sz=w1600"
                 alt="Student"
                 className="relative z-10 max-h-[500px] w-auto object-contain drop-shadow-2xl"
               />
