@@ -16,7 +16,7 @@ export default function TopBar() {
           </a>
         </div>
         <Link
-          to="/admission"
+          to="/admission?source=Top%20Bar"
           className="bg-white text-primary px-4 py-1 rounded-full font-semibold text-xs hover:bg-primary-light transition-colors"
         >
           Apply Now
