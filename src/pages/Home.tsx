@@ -219,9 +219,12 @@ useEffect(() => {
                 Empowering students with quality education, practical skills, and recognized certifications for a brighter tomorrow.
               </p>
               <div className="flex flex-wrap gap-4">
-                <Link to="/admission" className="pill-btn-primary">
-                  Apply Now
-                </Link>
+                <Link
+                to="/admission?source=Home"
+                className="pill-btn-primary"
+                  >
+                    Apply Now
+                  </Link>
                 <Link to="/about" className="pill-btn-outline">
                   Learn More
                 </Link>
