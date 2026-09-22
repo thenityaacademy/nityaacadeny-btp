@@ -8,7 +8,7 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
           <div>
             <img
-              src="https://i.ibb.co/C5MHjQj9/nitya-banner-p.png"
+             src="https://drive.google.com/thumbnail?id=1eH75kZyla2u4JOZ-Th3QlMvbidK0KbNW&sz=w1600"
               alt="Nitya Academy"
               className="h-12 w-auto mb-4 brightness-0 invert"
             />
