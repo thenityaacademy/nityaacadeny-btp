@@ -63,7 +63,14 @@ useEffect(() => {
   const category =
     searchParams.get("cat") || "all";
 
-  setActiveCategory(category);
+  const isValidCategory =
+    categories.some(
+      (cat) => cat.id === category
+    );
+
+  setActiveCategory(
+    isValidCategory ? category : "all"
+  );
 }, [searchParams]);
   const [courses, setCourses] = useState<Course[]>(
     DEFAULTS.courses
