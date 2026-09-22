@@ -263,11 +263,11 @@ export default function CourseDetail() {
 
             <div className="mt-8 pt-6 border-t border-slate-100">
               <Link
-                to="/admission"
-                className="pill-btn-primary"
-              >
-                Apply for This Course
-              </Link>
+            to={`/admission?source=Course%20Page&course=${course.id}`}
+            className="pill-btn-primary"
+            >
+          Apply for This Course
+          </Link>
             </div>
 
           </motion.div>
