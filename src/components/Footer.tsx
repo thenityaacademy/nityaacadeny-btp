@@ -22,7 +22,12 @@ export default function Footer() {
             <ul className="space-y-2 text-sm text-slate-400">
               <li><Link to="/about" className="hover:text-white transition-colors">About Institute</Link></li>
               <li><Link to="/courses" className="hover:text-white transition-colors">Courses</Link></li>
-              <li><Link to="/admission" className="hover:text-white transition-colors">Admission</Link></li>
+              <li><Link
+        to="/admission?source=Footer"
+        className="hover:text-white transition-colors"
+            >
+        Admission
+        </Link></li>
               <li><Link to="/scholarship" className="hover:text-white transition-colors">Scholarship</Link></li>
               <li><Link to="/news" className="hover:text-white transition-colors">News & Updates</Link></li>
             </ul>
