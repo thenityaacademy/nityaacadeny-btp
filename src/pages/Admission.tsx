@@ -61,6 +61,23 @@ useEffect(() => {
     mobile: "",
   });
 
+  useEffect(() => {
+  const courseFromUrl =
+    searchParams.get("course");
+
+  if (
+    courseFromUrl &&
+    courses.some(
+      (course) =>
+        course.id === courseFromUrl
+    )
+  ) {
+    setFormData((current) => ({
+      ...current,
+      course: courseFromUrl,
+    }));
+  }
+}, [searchParams, courses]);
 const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
 
