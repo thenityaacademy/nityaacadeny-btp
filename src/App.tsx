@@ -17,6 +17,7 @@ import StudyMaterial from "./pages/StudyMaterial";
 import News from "./pages/News";
 import Contact from "./pages/Contact";
 import Admin from "./pages/Admin";
+import NotFound from "./pages/NotFound";
 
 function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -132,6 +133,14 @@ export default function App() {
           }
         />
         <Route path="/admin" element={<Admin />} />
+        <Route
+  path="*"
+  element={
+    <Layout>
+      <NotFound />
+    </Layout>
+  }
+/>
       </Routes>
     </BrowserRouter>
   );
