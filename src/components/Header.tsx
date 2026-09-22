@@ -16,10 +16,10 @@ const navItems = [
     { label: "Skill", path: "/courses?cat=skill" },
     { label: "University", path: "/courses?cat=university" },
   ]},
-  { label: "ADMISSION", path: "/admission", dropdown: [
-    { label: "Admission Form", path: "/admission" },
-    { label: "Scholarship", path: "/scholarship" },
-  ]},
+  { label: "ADMISSION", path: "/admission?source=Header", dropdown: [
+  { label: "Admission Form", path: "/admission?source=Header" },
+  { label: "Scholarship", path: "/scholarship" },
+]},
   { label: "STUDY MATERIAL", path: "/study-material", dropdown: [
     { label: "Notes", path: "/study-material?tab=notes" },
     { label: "Syllabus", path: "/study-material?tab=syllabus" },
