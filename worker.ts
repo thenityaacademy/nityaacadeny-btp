@@ -2,11 +2,14 @@ export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
   ADMIN_PASSWORD: string;
+  SHEET_API_SECRET: string;
 }
 
 const ADMIN_USERNAME = "thenityaacademy@gmail.com";
 const SESSION_COOKIE = "nitya_admin_session";
 const SESSION_DURATION = 8 * 60 * 60 * 1000;
+const SHEET_WEB_APP_URL =
+  "https://script.google.com/macros/s/AKfycbyxXUujOjhoATmUkSNZK7873Ze_5qUDVV60hwqgftNXOBydp9joIw3hqSbUfNKnNw6y/exec";
 
 function getCookie(request: Request, name: string): string | null {
   const cookieHeader = request.headers.get("Cookie");
@@ -300,6 +303,115 @@ export default {
       );
     }
 
+    // ---------------- ADMISSION FORM ----------------
+
+if (
+  url.pathname === "/api/admission" &&
+  request.method === "POST"
+) {
+  try {
+    const body = await request.json() as {
+      name?: string;
+      fatherName?: string;
+      dob?: string;
+      qualification?: string;
+      course?: string;
+      address?: string;
+      mobile?: string;
+      source?: string;
+    };
+
+    const name = body.name?.trim() || "";
+    const fatherName = body.fatherName?.trim() || "";
+    const dob = body.dob?.trim() || "";
+    const qualification =
+      body.qualification?.trim() || "";
+    const course = body.course?.trim() || "";
+    const address = body.address?.trim() || "";
+    const mobile = body.mobile?.trim() || "";
+    const source = body.source?.trim() || "Direct";
+
+    if (
+      !name ||
+      !fatherName ||
+      !dob ||
+      !qualification ||
+      !course ||
+      !address ||
+      !/^[0-9]{10}$/.test(mobile)
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid form data",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    if (!env.SHEET_API_SECRET) {
+      return Response.json(
+        {
+          success: false,
+          error: "Sheet connection not configured",
+        },
+        {
+          status: 503,
+        }
+      );
+    }
+
+    const sheetResponse = await fetch(
+      SHEET_WEB_APP_URL,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          secret: env.SHEET_API_SECRET,
+          name,
+          fatherName,
+          dob,
+          qualification,
+          course,
+          address,
+          mobile,
+          source,
+        }),
+      }
+    );
+
+    const sheetResult = await sheetResponse.json() as {
+      success?: boolean;
+      error?: string;
+    };
+
+    if (!sheetResult.success) {
+      throw new Error(
+        sheetResult.error || "Google Sheet save failed"
+      );
+    }
+
+    return Response.json({
+      success: true,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return Response.json(
+      {
+        success: false,
+        error: "Application save failed",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
     // ---------------- PROTECT ALL API WRITES ----------------
 
     const writeMethods =
