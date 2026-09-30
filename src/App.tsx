@@ -15,7 +15,7 @@ import Admission from "./pages/Admission";
 import Scholarship from "./pages/Scholarship";
 import StudyMaterial from "./pages/StudyMaterial";
 import News from "./pages/News";
-import Contact from "./pages/Contact";
+import Contact from "./pages/ContactUpdated";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
