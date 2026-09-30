@@ -60,7 +60,7 @@ export default function Footer() {
               </li>
               <li className="flex items-start gap-2">
                 <MapPin size={16} className="mt-0.5 text-primary-light shrink-0" />
-                <span>Lavi Photostat Second Floor, Multipurpose Circle, Bharatpur, India, 321001</span>
+                <span>Near Ketan Gate, Sahyog Nagar, Bharatpur 321001</span>
               </li>
             </ul>
             <div className="flex items-center gap-3 mt-4">
