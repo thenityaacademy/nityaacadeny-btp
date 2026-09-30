@@ -60,7 +60,7 @@ export default function Footer() {
               </li>
               <li className="flex items-start gap-2">
                 <MapPin size={16} className="mt-0.5 text-primary-light shrink-0" />
-                <span>Near Ketan Gate, Sahyog Nagar, Bharatpur 321001</span>
+                <a href="https://www.google.com/maps/search/?api=1&query=NITYA%20ACADEMY%20BHARATPUR&query_place_id=ChIJ72WBTlmjczkRvbUTno4JWKE" target="_blank" rel="noopener noreferrer" className="hover:text-white hover:underline transition-colors">Near Ketan Gate, Sahyog Nagar, Bharatpur 321001</a>
               </li>
             </ul>
             <div className="flex items-center gap-3 mt-4">
