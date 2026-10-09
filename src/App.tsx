@@ -18,6 +18,7 @@ import News from "./pages/News";
 import Contact from "./pages/ContactUpdated";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
+import StaffPortal from "./pages/StaffPortal";
 
 function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -133,6 +134,7 @@ export default function App() {
           }
         />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/staff" element={<StaffPortal />} />
         <Route
   path="*"
   element={
