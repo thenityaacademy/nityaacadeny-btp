@@ -1,3 +1,4 @@
+import { saveStaffApplication } from "./worker-applications";
 /**
  * Staff-only API handler for Cloudflare Workers.
  * Call handleStaffAuth(request, env, isAdmin) BEFORE the static asset fallback.
@@ -95,6 +96,11 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
     ]);
     const settingsMap=Object.fromEntries(settings.results.map(s=>[s.setting_key,s.setting_value]));
     return json({enquiryUrl:settingsMap.enquiryUrl||"",admissionTerms:settingsMap.admissionTerms||"",scholarshipTerms:settingsMap.scholarshipTerms||"",courses:courses.results});
+  }
+  if((pathname==="/api/staff/admission" || pathname==="/api/staff/scholarship") && post) {
+    const staff=await session(request,env);
+    if(!staff) return json({error:"Unauthorized"},401);
+    return saveStaffApplication(request,env,staff,pathname.endsWith("/admission")?"admission":"scholarship");
   }
   if(pathname==="/api/admin/staff/create" && post) {
     if(!isAdmin) return json({error:"Admin required"},403);
