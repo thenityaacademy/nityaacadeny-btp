@@ -61,9 +61,9 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
   if(forbidCrossSite(request)) return json({error:"Invalid request origin"},403);
   const post=request.method==="POST";
   if(pathname==="/api/staff/login" && post) {
-    const {username,password}=await credentials(request)||{};
-    if(typeof username!=="string"||typeof password!=="string"||username.length>100||password.length>256) return json({error:"Invalid credentials"},400);
-    const staff=await env.DB.prepare("SELECT id, password_hash,active FROM staff WHERE username=?").bind(username.trim()).first<{id:string,password_hash:string,active:number}>();
+    const {staffId,password}=await credentials(request)||{};
+    if(typeof staffId!=="string"||typeof password!=="string"||staffId.length>100||password.length>256) return json({error:"Invalid credentials"},400);
+    const staff=await env.DB.prepare("SELECT id, password_hash,active FROM staff WHERE id=?").bind(staffId.trim()).first<{id:string,password_hash:string,active:number}>();
     if(!staff || !staff.active || !(await verifyPassword(password,staff.password_hash))) return json({error:"Invalid username or password"},401);
     const token=random();
     await env.DB.prepare("INSERT INTO staff_sessions(token_hash,staff_id,expires_at) VALUES (?,?,?)").bind(await sha(token),staff.id,new Date(Date.now()+ttlMs).toISOString()).run();
@@ -98,19 +98,18 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
   }
   if(pathname==="/api/admin/staff/create" && post) {
     if(!isAdmin) return json({error:"Admin required"},403);
-    const {id,username,name,password}=await credentials(request)||{};
+    const {id,name,password}=await credentials(request)||{};
     if(typeof id!=="string"||!/^NA-STF-[0-9]{3,8}$/.test(id)||
-       typeof username!=="string"||!/^[a-zA-Z0-9._-]{3,50}$/.test(username)||
        typeof name!=="string"||name.trim().length<2||name.length>100||
        typeof password!=="string"||password.length<12||password.length>128) return json({error:"Invalid staff details. Password must be 12+ characters."},400);
     try {
-      await env.DB.prepare("INSERT INTO staff(id,username,full_name,password_hash) VALUES (?,?,?,?)").bind(id,username,name.trim(),await passwordHash(password)).run();
+      await env.DB.prepare("INSERT INTO staff(id,username,full_name,password_hash) VALUES (?,?,?,?)").bind(id,id,name.trim(),await passwordHash(password)).run();
       return json({success:true,id},201);
-    } catch { return json({error:"Staff ID or username already exists"},409); }
+    } catch { return json({error:"Staff ID already exists"},409); }
   }
   if(pathname==="/api/admin/staff/list" && request.method==="GET") {
     if(!isAdmin) return json({error:"Admin required"},403);
-    const staff=await env.DB.prepare("SELECT id,username,full_name AS name,active,created_at,last_login_at FROM staff ORDER BY created_at DESC").all();
+    const staff=await env.DB.prepare("SELECT id,full_name AS name,active,created_at,last_login_at FROM staff ORDER BY created_at DESC").all();
     return json({staff:staff.results});
   }
   if(pathname==="/api/admin/staff/status" && post) {
