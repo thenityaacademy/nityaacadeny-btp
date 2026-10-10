@@ -89,7 +89,7 @@ function Form({ kind, staff, config, onDone }: { kind: Kind; staff: Staff; confi
 }
 export default function StaffPortal() {
   const [staff,setStaff]=useState<Staff|null>(null), [checking,setChecking]=useState(true);
-  const [username,setUsername]=useState(""), [password,setPassword]=useState(""), [error,setError]=useState(""), [busy,setBusy]=useState(false);
+  const [staffId,setStaffId]=useState(""), [password,setPassword]=useState(""), [error,setError]=useState(""), [busy,setBusy]=useState(false);
   const [tab,setTab]=useState<"dashboard"|Kind>("dashboard");
   const [config,setConfig]=useState<Config>({});
   const [counts,setCounts]=useState<Counts>({enquiries:0,admissions:0,scholarships:0});
@@ -102,7 +102,7 @@ export default function StaffPortal() {
   };
   useEffect(()=>{load().catch(()=>setStaff(null)).finally(()=>setChecking(false));},[]);
   const login=async(e:FormEvent)=>{e.preventDefault();setBusy(true);setError("");try{
-    await request("/api/staff/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});
+    await request("/api/staff/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({staffId,password})});
     await load();setPassword("");
   }catch(e){setError(e instanceof Error?e.message:"Login failed");}finally{setBusy(false);}};
   const logout=async()=>{await request("/api/staff/logout",{method:"POST"}).catch(()=>{});setStaff(null);setTab("dashboard");};
@@ -111,7 +111,7 @@ export default function StaffPortal() {
     <div className="flex items-center justify-between mb-8"><div><Link to="/" className="text-blue-700 text-sm">← Nitya Academy</Link><h1 className="text-3xl font-extrabold mt-2">Staff Portal</h1><p className="text-slate-500">Nitya Academy, Bharatpur</p></div>{staff&&<button onClick={logout} className="flex items-center gap-2 text-slate-700"><LogOut size={18}/>Logout</button>}</div>
     {!staff?<form onSubmit={login} className="bg-white p-8 rounded-2xl border max-w-md mx-auto space-y-4">
       <h2 className="text-xl font-bold flex gap-2"><LogIn/>Admin-issued Staff Login</h2>
-      <input required autoComplete="username" placeholder="Staff Username" className="w-full border rounded-lg p-3" value={username} onChange={e=>setUsername(e.target.value)}/>
+      <input required autoComplete="username" placeholder="Staff ID (e.g. NA-STF-001)" className="w-full border rounded-lg p-3" value={staffId} onChange={e=>setStaffId(e.target.value)}/>
       <input required autoComplete="current-password" type="password" placeholder="Password" className="w-full border rounded-lg p-3" value={password} onChange={e=>setPassword(e.target.value)}/>
       {error&&<p role="alert" className="text-red-700 text-sm">{error}</p>}
       <button disabled={busy} className="pill-btn-primary w-full">{busy?"Signing in...":"Login"}</button>
