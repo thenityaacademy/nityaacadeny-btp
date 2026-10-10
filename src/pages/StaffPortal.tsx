@@ -30,7 +30,7 @@ function Form({ kind, staff, config, onDone }: { kind: Kind; staff: Staff; confi
   const [photo, setPhoto] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<{ number: string; pdfUrl?: string } | null>(null);
+  const [result, setResult] = useState<{ number: string; pdfUrl?: string; pdfStatus?: string; sheetSyncStatus?: string } | null>(null);
   const terms = kind === "admission" ? config.admissionTerms : config.scholarshipTerms;
   const set = (name: string, value: string) => setValues(p => ({ ...p, [name]: value }));
   const submit = async (e: FormEvent) => {
@@ -43,7 +43,7 @@ function Form({ kind, staff, config, onDone }: { kind: Kind; staff: Staff; confi
       if (photo) body.append("photo", photo);
       // Never trust client-supplied staff identity or registration numbers.
       const data = await request("/api/staff/" + kind, { method: "POST", body });
-      setResult({ number: String(data.number), pdfUrl: data.pdfUrl });
+      setResult({ number: String(data.number), pdfUrl: data.pdfUrl, pdfStatus: data.pdfStatus, sheetSyncStatus: data.sheetSyncStatus });
       onDone();
     } catch (e) { setError(e instanceof Error ? e.message : "Submission failed"); }
     finally { setBusy(false); }
@@ -51,6 +51,7 @@ function Form({ kind, staff, config, onDone }: { kind: Kind; staff: Staff; confi
   if (result) return <section className="rounded-2xl bg-white border p-8 space-y-4">
     <h2 className="text-2xl font-bold text-green-700">Application submitted</h2>
     <p>Number: <strong>{result.number}</strong></p>
+    <p className="text-sm text-amber-800">PDF: {result.pdfStatus === "pending" ? "Pending generation" : (result.pdfStatus || "Unavailable")} · Google Sheet: {result.sheetSyncStatus || "Not confirmed"}</p>
     {result.pdfUrl && <div className="flex gap-4 flex-wrap">
       <a href={result.pdfUrl} target="_blank" rel="noopener noreferrer" className="pill-btn-primary">Download PDF</a>
       <a href={`https://wa.me/?text=${encodeURIComponent("Nitya Academy application " + result.number + ": " + result.pdfUrl)}`} target="_blank" rel="noopener noreferrer" className="pill-btn-outline">Share PDF Link</a>
