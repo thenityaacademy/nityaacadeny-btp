@@ -6,8 +6,13 @@ import { listStaffCourses } from "./worker-courses";
  */
 type DB = D1Database;
 type Kind = "admission" | "scholarship";
-type Env = { DB: DB };
+type Env = { DB: DB; STAFF_FILES?: R2Bucket; STAFF_SUBMISSIONS_ENABLED?: string };
 type Staff = { id:string; name:string };
+const photoMime:Record<string,{ext:string,valid:(b:Uint8Array)=>boolean}>={
+  "image/png":{ext:"png",valid:b=>b.length>=8&&[137,80,78,71,13,10,26,10].every((x,i)=>b[i]===x)},
+  "image/jpeg":{ext:"jpg",valid:b=>b.length>=3&&b[0]===255&&b[1]===216&&b[2]===255},
+  "image/webp":{ext:"webp",valid:b=>b.length>=12&&[82,73,70,70].every((x,i)=>b[i]===x)&&[87,69,66,80].every((x,i)=>b[i+8]===x)}
+};
 const allowable = new Set([
   "studentName","fatherName","motherName","dob","gender","mobile","whatsapp",
   "email","aadhaar","address","city","district","state","pin","passed10",
@@ -54,21 +59,32 @@ function validate(kind:Kind,fields:Record<string,string>) {
 }
 function dateCode() { const d=new Date();return String(d.getUTCFullYear()); }
 export async function saveStaffApplication(request:Request,env:Env,staff:Staff,kind:Kind):Promise<Response> {
+  // Block live student writes until private storage, PDF generation, and security tests are complete.
+  if(env.STAFF_SUBMISSIONS_ENABLED!=="true")
+    return fail("Staff Admissions are not open yet. Please contact Admin.",503);
+  if(!env.STAFF_FILES)
+    return fail("Private R2 file storage must be configured before accepting student records.",503);
   if((request.headers.get("content-length")||"0")!=="0" &&
-     Number(request.headers.get("content-length"))>350_000) return fail("Form too large",413);
+     Number(request.headers.get("content-length"))>5_400_000) return fail("Form too large",413);
   if(!(request.headers.get("content-type")||"").startsWith("multipart/form-data;")) return fail("Expected multipart form");
   let form:FormData;
   try{form=await request.formData();}catch{return fail("Invalid form data");}
   const fields:Record<string,string>={};
+  let photo:File|null=null;
   for(const [key,value] of form.entries()){
     if(key==="photo") {
-      // R2 is disabled. Never accept a photo and silently discard it.
-      if(value instanceof File && value.size) return fail("Photo uploads require private R2 storage; contact admin.",503);
+      if(photo||!(value instanceof File))return fail("Exactly one student photo must be provided");
+      photo=value;
       continue;
     }
     if(typeof value!=="string" || Object.hasOwn(fields,key)) return fail("Invalid or duplicate field");
     fields[key]=value;
   }
+  if(!photo||photo.size<1||photo.size>5_000_000)return fail("Student photo required (maximum 5 MB)");
+  const format=photoMime[photo.type];
+  if(!format)return fail("Photo must be PNG, JPG or WEBP");
+  const photoBytes=new Uint8Array(await photo.arrayBuffer());
+  if(!format.valid(photoBytes))return fail("Photo format does not match the file contents");
   const error=validate(kind,fields);
   if(error)return fail(error);
   if(kind==="admission"){
@@ -93,16 +109,29 @@ export async function saveStaffApplication(request:Request,env:Env,staff:Staff,k
     if(!seq)return fail("Scholarship registration series not configured or exhausted",503);
     formNumber=seq.prefix+seq.issued_number;
   } else formNumber="NA-ADM-"+dateCode()+"-"+id.slice(0,8).toUpperCase();
-  // Student's Aadhaar and personal details stay inside D1; Google Sheet mappings must
-  // explicitly restrict access and avoid publicly shareable files.
-  const result=await env.DB.prepare(`INSERT INTO student_applications
-    (id,kind,form_number,staff_id,student_name,mobile,course_id,fields_json,payment_mode,fee_amount,sheet_sync_status)
-    VALUES (?,?,?,?,?,?,?,?,?,?,'pending')`).bind(
-      id,kind,formNumber,staff.id,fields.studentName,fields.mobile,
-      kind==="admission"?fields.course:"ecce",JSON.stringify(fields),
-      kind==="scholarship"?fields.paymentMode:null,Math.round(fee*100)
-    ).run();
-  if(!result.success)return fail("Could not save application",500);
+  // Store student image in private R2, never give it a public URL.
+  const photoKey="student-photos/"+id+"."+format.ext;
+  try {
+    await env.STAFF_FILES.put(photoKey,photoBytes,{httpMetadata:{contentType:photo.type}});
+  }catch(error) {
+    console.error("Student photo upload failed",error);
+    return fail("Photo storage failed; application was not submitted",503);
+  }
+  let saved=false;
+  try {
+    const result=await env.DB.prepare(`INSERT INTO student_applications
+      (id,kind,form_number,staff_id,student_name,mobile,course_id,fields_json,photo_r2_key,payment_mode,fee_amount,sheet_sync_status)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending')`).bind(
+        id,kind,formNumber,staff.id,fields.studentName,fields.mobile,
+        kind==="admission"?fields.course:"ecce",JSON.stringify(fields),photoKey,
+        kind==="scholarship"?fields.paymentMode:null,Math.round(fee*100)
+      ).run();
+    saved=result.success;
+  }catch(error) {console.error("Application record save failed",error);}
+  if(!saved) {
+    await env.STAFF_FILES.delete(photoKey).catch(()=>{});
+    return fail("Could not save application. Please contact Admin.",503);
+  }
   await env.DB.prepare("INSERT INTO staff_activity(staff_id,action,reference_id) VALUES (?,?,?)").bind(staff.id,kind+"_submitted",id).run().catch(()=>{});
   return Response.json({success:true,number:formNumber,recordId:id,pdfStatus:"pending",sheetSyncStatus:"pending"},{status:201,headers:{"Cache-Control":"no-store"}});
 }
