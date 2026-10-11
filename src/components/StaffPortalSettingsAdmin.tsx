@@ -1,3 +1,4 @@
+import StaffCourseSettings from "./StaffCourseSettings";
 import {useEffect,useState,type FormEvent} from "react";
 type Series={sequence_key:string;prefix:string;next_number:number;end_number:number};
 async function api(path:string,init?:RequestInit){
@@ -36,6 +37,7 @@ export default function StaffPortalSettingsAdmin(){
    </div>
    <button disabled={busy} className="pill-btn-primary disabled:opacity-60">{busy?"Saving...":"Save Series"}</button>
   </form>
+  <StaffCourseSettings />
   <div className="bg-white rounded-2xl border p-6 space-y-3">
    <h3 className="text-lg font-semibold">Google Sheets Sync</h3>
    <p className="text-sm text-slate-500">Existing Enquiry integration is separate. This sync handles Admissions and Scholarships.</p>
