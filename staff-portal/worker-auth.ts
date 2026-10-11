@@ -1,3 +1,4 @@
+import { handleCourseLogo,setCourseLogoStatus } from "./worker-course-logos";
 import { listStaffCourses } from "./worker-courses";
 import { syncApplications } from "./worker-sheets";
 import { saveStaffApplication } from "./worker-applications";
@@ -45,7 +46,7 @@ function forbidCrossSite(request: Request) {
   }
   return false;
 }
-type Env = { DB: D1Database };
+type Env = { DB: D1Database; STAFF_FILES?: R2Bucket; STAFF_SHEETS_URL?:string; STAFF_SHEETS_SECRET?:string };
 async function session(request: Request, env: Env) {
   const token=cookie(request);
   if(!/^[0-9a-f]{64}$/.test(token)) return null;
@@ -106,6 +107,14 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
     const staff=await session(request,env);
     if(!staff) return json({error:"Unauthorized"},401);
     return saveStaffApplication(request,env,staff,pathname.endsWith("/admission")?"admission":"scholarship");
+  }
+  if(pathname==="/api/admin/staff/course-logo" && ["POST","GET","DELETE"].includes(request.method)) {
+    if(!isAdmin) return json({error:"Admin required"},403);
+    return handleCourseLogo(request,env);
+  }
+  if(pathname==="/api/admin/staff/course-logo-status" && post) {
+    if(!isAdmin) return json({error:"Admin required"},403);
+    return setCourseLogoStatus(request,env);
   }
   if(pathname==="/api/admin/staff/create" && post) {
     if(!isAdmin) return json({error:"Admin required"},403);
