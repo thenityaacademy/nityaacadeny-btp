@@ -46,7 +46,7 @@ function forbidCrossSite(request: Request) {
   }
   return false;
 }
-type Env = { DB: D1Database; STAFF_FILES?: R2Bucket; STAFF_SHEETS_URL?:string; STAFF_SHEETS_SECRET?:string };
+type Env = { DB: D1Database; STAFF_FILES?: R2Bucket; STAFF_SHEETS_URL?:string; STAFF_SHEETS_SECRET?:string; STAFF_SUBMISSIONS_ENABLED?:string };
 async function session(request: Request, env: Env) {
   const token=cookie(request);
   if(!/^[0-9a-f]{64}$/.test(token)) return null;
@@ -101,7 +101,9 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
     ]);
     const settingsMap=Object.fromEntries(settings.results.map(s=>[s.setting_key,s.setting_value]));
     return json({enquiryUrl:settingsMap.enquiryUrl||"",admissionTerms:settingsMap.admissionTerms||"",
-      scholarshipTerms:settingsMap.scholarshipTerms||"",courses:courses.filter(c=>c.active)});
+      scholarshipTerms:settingsMap.scholarshipTerms||"",courses:courses.filter(c=>c.active),
+      photoStorageEnabled:!!env.STAFF_FILES,
+      submissionsEnabled:!!env.STAFF_FILES && env.STAFF_SUBMISSIONS_ENABLED==="true"});
   }
   if((pathname==="/api/staff/admission" || pathname==="/api/staff/scholarship") && post) {
     const staff=await session(request,env);
