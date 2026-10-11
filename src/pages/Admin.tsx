@@ -3,9 +3,11 @@ import { motion } from "framer-motion";
 import { LogIn, Lock, Eye, EyeOff, LayoutDashboard, Image, BookOpen, Newspaper, FileText, Settings, Save, Trash2, Plus, X, CheckCircle, AlertTriangle, Award } from "lucide-react";
 import { getStore, setStore } from "../data/store";
 import StaffManagementAdmin from "../components/StaffManagementAdmin";
+import StaffPortalSettingsAdmin from "../components/StaffPortalSettingsAdmin";
 
 const SECTIONS = [
   { id: "staff", label: "Staff Management", icon: Lock },
+  { id: "staff-settings", label: "Staff Portal Settings", icon: Settings },
   { id: "offers", label: "Offer Images", icon: Image },
   { id: "instagram", label: "Instagram Images", icon: Image },
   { id: "courses", label: "Courses", icon: BookOpen },
@@ -266,6 +268,7 @@ if (checkingSession) {
             )}
 
             {activeSection === "staff" && <StaffManagementAdmin />}
+            {activeSection === "staff-settings" && <StaffPortalSettingsAdmin />}
             {activeSection === "offers" && <OfferImagesAdmin store={store} onSave={handleSave} />}
             {activeSection === "instagram" && <InstagramImagesAdmin store={store} onSave={handleSave} />}
             {activeSection === "courses" && <CoursesAdmin store={store} onSave={handleSave} />}
