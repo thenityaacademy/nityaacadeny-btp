@@ -17,9 +17,9 @@ const allowable = new Set([
   "hasReference","referenceName","examDate","paymentMode","transactionRef"
 ]);
 const fail = (error:string,status=400)=>Response.json({error},{status,headers:{"Cache-Control":"no-store"}});
-const isDate = (x:string)=>/^\\d{4}-\\d{2}-\\d{2}$/.test(x)&&!Number.isNaN(Date.parse(x));
+const isDate = (x:string)=>/^\d{4}-\d{2}-\d{2}$/.test(x)&&!Number.isNaN(Date.parse(x));
 const str = (fields:Record<string,string>,key:string)=>fields[key]?.trim()||"";
-const yearValid = (s:string) => /^(19|20)\\d{2}$/.test(s) && Number(s) <= new Date().getFullYear()+1;
+const yearValid = (s:string) => /^(19|20)\d{2}$/.test(s) && Number(s) <= new Date().getFullYear()+1;
 const percentValid=(s:string)=>!s || (Number.isFinite(Number(s)) && Number(s)>=0 && Number(s)<=100);
 function validate(kind:Kind,fields:Record<string,string>) {
   for(const k of Object.keys(fields)) if(!allowable.has(k)) return "Unsupported form field: "+k;
@@ -27,8 +27,8 @@ function validate(kind:Kind,fields:Record<string,string>) {
     if(!str(fields,k)) return k+" is required";
   if(str(fields,"studentName").length>120 || str(fields,"address").length>700) return "Text too long";
   if(!isDate(str(fields,"dob"))) return "Invalid birth date";
-  if(!/^[6-9]\\d{9}$/.test(str(fields,"mobile"))) return "Enter a valid Indian mobile number";
-  if(!/^[2-9]\\d{11}$/.test(str(fields,"aadhaar"))) return "Aadhaar must contain exactly 12 digits";
+  if(!/^[6-9]\d{9}$/.test(str(fields,"mobile"))) return "Enter a valid Indian mobile number";
+  if(!/^[2-9]\d{11}$/.test(str(fields,"aadhaar"))) return "Aadhaar must contain exactly 12 digits";
   if(!["male","female","other","prefer-not-to-say"].includes(str(fields,"gender")))
     return "Select gender";
   for(const value of Object.values(fields)) if(value.length>1200) return "Field length exceeded";
@@ -40,8 +40,8 @@ function validate(kind:Kind,fields:Record<string,string>) {
     if(str(fields,"passed12")==="yes" && (!str(fields,"board12") || !yearValid(str(fields,"year12")) || !percentValid(str(fields,"percent12"))))
       return "Enter valid 12th board, passing year and percentage";
     if(!str(fields,"course")) return "Select course";
-    if(!/^\\d+(\\.\\d{1,2})?$/.test(str(fields,"totalFees"))) return "Invalid total fees";
-    if(str(fields,"practicalApplicable")==="yes"&&!/^\\d+(\\.\\d{1,2})?$/.test(str(fields,"practicalFee"))) return "Enter practical fees";
+    if(!/^\d+(\.\d{1,2})?$/.test(str(fields,"totalFees"))) return "Invalid total fees";
+    if(str(fields,"practicalApplicable")==="yes"&&!/^\d+(\.\d{1,2})?$/.test(str(fields,"practicalFee"))) return "Enter practical fees";
     if(str(fields,"hasReference")==="yes"&&!str(fields,"referenceName")) return "Enter reference name";
   } else {
     if(str(fields,"passed12")!=="yes") return "12th pass is required for ECCE scholarship";
