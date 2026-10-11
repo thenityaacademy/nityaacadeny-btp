@@ -1,3 +1,4 @@
+import { listStaffCourses } from "./worker-courses";
 import { syncApplications } from "./worker-sheets";
 import { saveStaffApplication } from "./worker-applications";
 /**
@@ -95,10 +96,11 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
     if(!staff) return json({error:"Unauthorized"},401);
     const [settings,courses]=await Promise.all([
       env.DB.prepare("SELECT setting_key,setting_value FROM portal_settings").all<{setting_key:string,setting_value:string}>(),
-      env.DB.prepare("SELECT course_id AS id,course_name AS name FROM staff_courses WHERE active=1 ORDER BY course_name").all<{id:string,name:string}>()
+      listStaffCourses(env)
     ]);
     const settingsMap=Object.fromEntries(settings.results.map(s=>[s.setting_key,s.setting_value]));
-    return json({enquiryUrl:settingsMap.enquiryUrl||"",admissionTerms:settingsMap.admissionTerms||"",scholarshipTerms:settingsMap.scholarshipTerms||"",courses:courses.results});
+    return json({enquiryUrl:settingsMap.enquiryUrl||"",admissionTerms:settingsMap.admissionTerms||"",
+      scholarshipTerms:settingsMap.scholarshipTerms||"",courses:courses.filter(c=>c.active)});
   }
   if((pathname==="/api/staff/admission" || pathname==="/api/staff/scholarship") && post) {
     const staff=await session(request,env);
@@ -154,6 +156,23 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
     const changed=await env.DB.prepare("UPDATE staff SET active=? WHERE id=?").bind(active?1:0,id).run();
     if(!active) await env.DB.prepare("UPDATE staff_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE staff_id=?").bind(id).run();
     return json({success:true,updated:changed.meta.changes});
+  }
+  if(pathname==="/api/admin/staff/courses" && request.method==="GET") {
+    if(!isAdmin) return json({error:"Admin required"},403);
+    return json({courses:await listStaffCourses(env)});
+  }
+  if(pathname==="/api/admin/staff/course-status" && post) {
+    if(!isAdmin) return json({error:"Admin required"},403);
+    const body=await credentials(request)||{};
+    const {id,active}=body;
+    if(typeof id!=="string" || typeof active!=="boolean" || id.length>80)
+      return json({error:"Invalid course selection"},400);
+    const course=(await listStaffCourses(env)).find(c=>c.id===id);
+    if(!course) return json({error:"Course not found in website catalog"},404);
+    await env.DB.prepare(`INSERT INTO staff_courses(course_id,course_name,active)
+      VALUES (?,?,?) ON CONFLICT(course_id) DO UPDATE SET
+      course_name=excluded.course_name,active=excluded.active`).bind(id,course.name,active?1:0).run();
+    return json({success:true,id,active});
   }
   if(pathname==="/api/admin/staff/registration-series" && request.method==="GET") {
     if(!isAdmin) return json({error:"Admin required"},403);
