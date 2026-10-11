@@ -257,7 +257,7 @@ export default function StaffPortal() {
         <button onClick={()=>setTab("scholarship")} className="text-left rounded-2xl bg-white border p-6 hover:border-blue-500"><GraduationCap className="mb-3 text-blue-700"/><strong>ECCE Scholarship</strong><p className="text-sm text-slate-500">₹100 registration</p></button>
       </div>
       {tab!=="dashboard"&&<button onClick={()=>setTab("dashboard")} className="mb-5 text-blue-700">← Dashboard</button>}
-      {tab==="dashboard"?<div className="grid sm:grid-cols-3 gap-4">{([["Enquiries",counts.enquiries],["Admissions",counts.admissions],["Scholarships",counts.scholarships]] as const).map(([label,count])=><div className="bg-white border rounded-xl p-6" key={label}><div className="text-slate-500">{label}</div><div className="text-3xl font-bold mt-2">{count}</div></div>)}</div>:<Form kind={tab} staff={staff} config={config} onDone={()=>request("/api/staff/dashboard").then(d=>setCounts(d.counts)).catch(()=>{})}/>}
+      {tab==="dashboard"?<div className="grid sm:grid-cols-3 gap-4">{([["Enquiries",counts.enquiries],["Admissions",counts.admissions],["Scholarships",counts.scholarships]] as const).map(([label,count])=><div className="bg-white border rounded-xl p-6" key={label}><div className="text-slate-500">{label}</div><div className="text-3xl font-bold mt-2">{count}</div></div>)}</div>:<Form key={tab} kind={tab} staff={staff} config={config} onDone={()=>request("/api/staff/dashboard").then(d=>setCounts(d.counts)).catch(()=>{})}/>}
     </>}
   </div></main>;
 }
