@@ -17,8 +17,8 @@ const knownCategories = new Set(["vocational", "skill", "university"]);
 export async function listStaffCourses(env: CourseEnv): Promise<StaffCourse[]> {
   const [site, overrides] = await Promise.all([
     env.DB.prepare("SELECT value FROM site_settings WHERE key = 'courses'").first<{value:string}>(),
-    env.DB.prepare("SELECT course_id, active, default_fee, extra_logo_r2_key, extra_logo_active FROM staff_courses").all<{
-      course_id:string;active:number;default_fee:number|null;extra_logo_r2_key:string|null;extra_logo_active:number
+    env.DB.prepare("SELECT course_id, active, default_fee, extra_logo_drive_id, extra_logo_active FROM staff_courses").all<{
+      course_id:string;active:number;default_fee:number|null;extra_logo_drive_id:string|null;extra_logo_active:number
     }>()
   ]);
   let entries: unknown = [];
@@ -35,6 +35,6 @@ export async function listStaffCourses(env: CourseEnv): Promise<StaffCourse[]> {
     used.add(id);
     const category=typeof raw.category === "string" && knownCategories.has(raw.category) ? raw.category : "other";
     const override=byId.get(id);
-    return [{id,name,category,active:override ? override.active===1 : true,defaultFee:override?.default_fee ?? null,hasLogo:!!override?.extra_logo_r2_key,logoActive:override?.extra_logo_active===1 && !!override?.extra_logo_r2_key}];
+    return [{id,name,category,active:override ? override.active===1 : true,defaultFee:override?.default_fee ?? null,hasLogo:!!override?.extra_logo_drive_id,logoActive:override?.extra_logo_active===1 && !!override?.extra_logo_drive_id}];
   });
 }
