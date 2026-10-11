@@ -16,7 +16,7 @@ const HEADER_KEYS = {
   "district":"district","state":"state","pin code":"pin",
   "10th board":"board10","10th passing year":"year10","10th percentage":"percent10",
   "12th board":"board12","12th passing year":"year12","12th percentage":"percent12",
-  "12th pass":"passed12","last qualification":"lastQualification",
+  "10th pass":"passed10","12th pass":"passed12","last qualification":"lastQualification",
   "university/board":"lastBoard","qualification passing year":"lastYear",
   "qualification percentage":"lastPercent",
   "course":"course","session":"session","course type":"courseType",
