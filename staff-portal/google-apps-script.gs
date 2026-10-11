@@ -1,8 +1,17 @@
 /**
- * Nitya Academy Staff Portal — two DIFFERENT existing header layouts.
- * Keep existing Row 1 headings. No replacement/clearing of sheet headers.
- * Script Properties: STAFF_SPREADSHEET_ID and STAFF_SHEETS_SECRET.
+ * Nitya Academy Staff Portal — Google Sheets + PRIVATE Google Drive bridge.
+ * Deploy as Google Apps Script Web App (execute as account owner).
+ * Script Properties: STAFF_SPREADSHEET_ID, STAFF_SHEETS_SECRET.
+ * Anyone with the Web App URL can call it, but each POST requires the
+ * unguessable shared secret in the JSON body. Never put secret in a URL.
+ * Do not make student photos, Aadhaar PDFs, or folders public.
  */
+const DRIVE_FOLDERS={
+  admissions:{photos:"16cYt2PkbLlGUgOVtTr_WgUWggGN_XWmn",pdfs:"14camlCdZmGh2OZPxm1h8fA6aGM_xtzZ_"},
+  scholarships:{photos:"1LBtTOfVaeGtGBRJhV4nOA6sm6gRGAyRP",pdfs:"1fxGuq6J9KadsGCPoTEij8aEhGgnWIE9r"},
+  logos:"1tHlgQjQ7WvWsRQsSj3FZImsVxxXAzVay",
+  mainLogo:"1eH75kZyla2u4JOZ-Th3QlMvbidK0KbNW"
+};
 const HEADER_KEYS = {
   "application no":"formNumber","application number":"formNumber",
   "registration no":"formNumber","registration number":"formNumber",
@@ -30,54 +39,175 @@ const HEADER_KEYS = {
   "record id":"recordId"
 };
 function normalize_(s){return String(s||"").trim().toLowerCase().replace(/\s+/g," ");}
+
+function response_(data){return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);}
+function shortId_(s){return typeof s==="string" && /^[a-zA-Z0-9_-]{8,150}$/.test(s);}
+function inFolder_(file,folderId){const parents=file.getParents();while(parents.hasNext())if(parents.next().getId()===folderId)return true;return false;}
+function getFolder_(kind,part){const v=DRIVE_FOLDERS[kind];if(!v||!v[part])throw Error("Invalid destination");return DriveApp.getFolderById(v[part]);}
+function findInFolder_(folder,name){const files=folder.getFilesByName(name);return files.hasNext()?files.next():null;}
+function prepareBlob_(base64,mime,name,maxBytes){
+ if(typeof base64!=="string"||base64.length>Math.ceil(maxBytes*4/3)+20)throw Error("File too large");
+ if(!["image/jpeg","image/png","image/webp"].includes(mime))throw Error("Invalid image format");
+ const bytes=Utilities.base64Decode(base64);
+ if(!bytes.length||bytes.length>maxBytes)throw Error("Image exceeds allowed size");
+ return Utilities.newBlob(bytes,mime,name);
+}
+function addImage_(body,blob,maxWidth){
+ try{
+  const image=body.appendImage(blob);
+  const width=image.getWidth(),height=image.getHeight();
+  if(width>maxWidth){image.setWidth(maxWidth);image.setHeight(Math.max(1,Math.round(height*maxWidth/width)));}
+ }catch(err){throw Error("Could not embed image in PDF: "+String(err.message||err));}
+}
+function buildPdf_(p,photoFile,existingPdf) {
+ if(existingPdf)return existingPdf;
+ const values=p.fields||{};
+ const folder=getFolder_(p.type,"pdfs");
+ const fileName="Nitya Academy "+(p.type==="admission"?"Admission":"ECCE Scholarship")+" - "+p.formNumber+".pdf";
+ const doc=DocumentApp.create("TEMP - "+p.formNumber+" - "+p.recordId);
+ try{
+  const b=doc.getBody();
+  b.setMarginTop(32);b.setMarginBottom(32);b.setMarginLeft(36);b.setMarginRight(36);
+  addImage_(b,DriveApp.getFileById(DRIVE_FOLDERS.mainLogo).getBlob(),90);
+  if(p.courseLogoFileId){
+   const courseLogo=DriveApp.getFileById(p.courseLogoFileId);
+   if(!inFolder_(courseLogo,DRIVE_FOLDERS.logos))throw Error("Unrecognized course logo");
+   addImage_(b,courseLogo.getBlob(),70);
+  }
+  b.appendParagraph("NITYA ACADEMY, BHARATPUR")
+   .setHeading(DocumentApp.ParagraphHeading.HEADING1)
+   .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  b.appendParagraph("Near Ketan Gate, Sahyog Nagar, Bharatpur 321001 | 9680008384 | 9802813444")
+   .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  b.appendParagraph(p.type==="admission"?"STUDENT ADMISSION FORM":"ECCE SCHOLARSHIP REGISTRATION FORM")
+   .setHeading(DocumentApp.ParagraphHeading.HEADING2).setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  b.appendParagraph("Application / Registration No.: "+p.formNumber);
+  b.appendParagraph("Submission Date: "+p.createdAt);
+  addImage_(b,photoFile.getBlob(),105);
+  const labels={
+   studentName:"Student Name",fatherName:"Father Name",motherName:"Mother Name",dob:"Date of Birth",
+   gender:"Gender",aadhaar:"Aadhaar Number",mobile:"Mobile",whatsapp:"WhatsApp",email:"Email",
+   address:"Address",city:"City/Village",district:"District",state:"State",pin:"PIN Code",
+   passed10:"10th Passed",board10:"10th Board",year10:"10th Passing Year",percent10:"10th %",
+   passed12:"12th Passed",board12:"12th Board",year12:"12th Passing Year",percent12:"12th %",
+   lastQualification:"Last Qualification",lastBoard:"Last Board/University",lastYear:"Last Passing Year",
+   lastPercent:"Last Qualification %",course:"Course",session:"Session",
+   totalFees:"Total Fees (INR)",practicalApplicable:"Practical Fees?",practicalFee:"Practical Fee (INR)",
+   hasReference:"External Reference",referenceName:"Reference Name",registrationDate:"Registration Date",
+   examDate:"Exam Date",paymentMode:"Payment Mode",transactionRef:"Transaction Reference"
+  };
+  const lines=[];
+  Object.keys(labels).forEach(key=>{if(values[key]!==undefined&&String(values[key]).trim()!=="")
+   lines.push([labels[key],String(values[key]).slice(0,500)]);});
+  if(p.type==="scholarship")lines.push(["Registration Fee","INR 100"]);
+  lines.push(["Staff Reference",String(p.staffName||"")+" ("+String(p.staffId||"")+")"]);
+  const table=b.appendTable(lines);
+  for(let i=0;i<lines.length;i++)table.getRow(i).getCell(0).setBackgroundColor("#e9f2ff");
+  if(p.terms)b.appendParagraph("Terms & Conditions").setHeading(DocumentApp.ParagraphHeading.HEADING3);
+  if(p.terms)b.appendParagraph(String(p.terms).slice(0,10000));
+  b.appendParagraph("\nStudent / Guardian Signature: _____________________");
+  b.appendParagraph("For Nitya Academy: _____________________");
+  doc.saveAndClose();
+  const temp=DriveApp.getFileById(doc.getId());
+  const pdfBlob=temp.getAs(MimeType.PDF).setName(fileName);
+  return folder.createFile(pdfBlob);
+ }finally{
+  try{DriveApp.getFileById(doc.getId()).setTrashed(true);}catch(ignore){}
+ }
+}
+function saveDocuments_(p){
+ if(!["admission","scholarship"].includes(p.type) || !/^[a-f0-9-]{36}$/i.test(String(p.recordId||""))
+    || !/^[A-Za-z0-9_-]{4,80}$/.test(String(p.formNumber||"")))throw Error("Invalid document reference");
+ const values=p.fields||{};
+ if(!values.studentName||!values.aadhaar)throw Error("Student details are missing");
+ if(!p.photoBase64||!p.photoMime)throw Error("Photo required");
+ const photos=getFolder_(p.type,"photos"),pdfs=getFolder_(p.type,"pdfs");
+ const photoName="Student Photo "+p.recordId;
+ const pdfName="Nitya Academy "+(p.type==="admission"?"Admission":"ECCE Scholarship")+" - "+p.formNumber+".pdf";
+ let photo=findInFolder_(photos,photoName);
+ if(!photo)photo=photos.createFile(prepareBlob_(p.photoBase64,p.photoMime,photoName,2500000));
+ let pdf=findInFolder_(pdfs,pdfName);
+ pdf=buildPdf_(p,photo,pdf);
+ return {success:true,photoFileId:photo.getId(),pdfFileId:pdf.getId()};
+}
+function uploadCourseLogo_(p){
+ if(!p.photoBase64||!p.photoMime)throw Error("Logo image required");
+ const name="Course logo "+String(p.courseId||"")+" "+Utilities.getUuid();
+ const blob=prepareBlob_(p.photoBase64,p.photoMime,name,2097152);
+ const file=DriveApp.getFolderById(DRIVE_FOLDERS.logos).createFile(blob);
+ return {success:true,fileId:file.getId()};
+}
+function getLogo_(p){
+ if(!shortId_(p.fileId))throw Error("Invalid logo id");
+ const file=DriveApp.getFileById(p.fileId);
+ if(!inFolder_(file,DRIVE_FOLDERS.logos))throw Error("Logo folder mismatch");
+ return {success:true,mime:file.getMimeType(),base64:Utilities.base64Encode(file.getBlob().getBytes())};
+}
+function deleteLogo_(p){
+ if(!shortId_(p.fileId))throw Error("Invalid logo id");
+ const file=DriveApp.getFileById(p.fileId);
+ if(!inFolder_(file,DRIVE_FOLDERS.logos))throw Error("Logo folder mismatch");
+ file.setTrashed(true);return {success:true};
+}
+function fetchPdf_(p){
+ if(!shortId_(p.fileId)||!["admission","scholarship"].includes(p.type))throw Error("Invalid PDF request");
+ const file=DriveApp.getFileById(p.fileId);
+ if(!inFolder_(file,DRIVE_FOLDERS[p.type].pdfs)||file.getMimeType()!==MimeType.PDF)throw Error("PDF access denied");
+ const blob=file.getBlob();
+ if(blob.getBytes().length>8000000)throw Error("PDF exceeds delivery limit");
+ return {success:true,mime:"application/pdf",base64:Utilities.base64Encode(blob.getBytes())};
+}
+function upsertSheet_(payload){
+ if(!["admission","scholarship"].includes(payload.type)||!payload.recordId||!payload.formNumber)throw Error("Invalid Sheet payload");
+ const spreadsheetId=PropertiesService.getScriptProperties().getProperty("STAFF_SPREADSHEET_ID");
+ if(!spreadsheetId)throw Error("Spreadsheet not configured");
+ const sheet=SpreadsheetApp.openById(spreadsheetId).getSheetByName(payload.type==="admission"?"Admissions":"Scholarships");
+ if(!sheet)throw Error("Required tab missing");
+ const width=sheet.getLastColumn();
+ if(width<1)throw Error("Sheet headings missing");
+ const headings=sheet.getRange(1,1,1,width).getDisplayValues()[0];
+ const keyIndex=headings.findIndex(h=>normalize_(h)===(payload.type==="admission"?"application no":"registration no"));
+ if(keyIndex<0)throw Error("Application/Registration No header not found");
+ const info=Object.assign({},payload.fields||{},{
+  recordId:payload.recordId,formNumber:payload.formNumber,createdAt:payload.createdAt,
+  studentName:payload.studentName,mobile:payload.mobile,
+  staffId:payload.staffId,staffName:payload.staffName,registrationFee:payload.type==="scholarship"?100:"",
+  photoUrl:payload.photoFileId?"https://drive.google.com/file/d/"+payload.photoFileId+"/view":"",
+  pdfUrl:payload.pdfFileId?"https://drive.google.com/file/d/"+payload.pdfFileId+"/view":"",
+  submissionStatus:"Submitted"
+ });
+ const data=headings.map(h=>{
+  const field=HEADER_KEYS[normalize_(h)];
+  const value=field?String(info[field]??""):"";
+  return /^[=+@\-\t\r]/.test(value)?"'"+value:value;
+ });
+ const last=sheet.getLastRow();
+ const match=last>1?sheet.getRange(2,keyIndex+1,last-1,1).createTextFinder(String(payload.formNumber)).matchEntireCell(true).findNext():null;
+ const row=match?match.getRow():last+1;
+ sheet.getRange(row,1,1,width).setNumberFormat("@").setValues([data]);
+ return {success:true,row:row};
+}
 function doPost(e){
  let locked=false;
  const lock=LockService.getScriptLock();
- try {
+ try{
   const payload=JSON.parse(e.postData.contents);
-  const props=PropertiesService.getScriptProperties();
-  const secret=props.getProperty("STAFF_SHEETS_SECRET");
-  if(!secret||payload.secret!==secret)throw new Error("Unauthorized");
-  if(payload.action!=="upsert"||!["admission","scholarship"].includes(payload.type)||
-     !payload.recordId||!payload.formNumber)throw new Error("Invalid payload");
-  const spreadsheetId=props.getProperty("STAFF_SPREADSHEET_ID");
-  if(!spreadsheetId)throw new Error("Spreadsheet ID not configured");
-  const sheet=SpreadsheetApp.openById(spreadsheetId).getSheetByName(
-   payload.type==="admission"?"Admissions":"Scholarships"
-  );
-  if(!sheet)throw new Error("Required tab not found");
-  locked=lock.tryLock(20000);
-  if(!locked)throw new Error("Sheet busy, retry later");
-  const width=sheet.getLastColumn();
-  if(width<1)throw new Error("Row 1 headings missing");
-  const headings=sheet.getRange(1,1,1,width).getDisplayValues()[0];
-  const keyColumn=payload.type==="admission"?"application no":"registration no";
-  const keyIndex=headings.findIndex(h=>normalize_(h)===keyColumn);
-  if(keyIndex<0)throw new Error("Missing "+keyColumn+" header");
-  const details=payload.fields||{};
-  const info=Object.assign({},details,{
-    recordId:payload.recordId,formNumber:payload.formNumber,
-    createdAt:payload.createdAt,studentName:payload.studentName,mobile:payload.mobile,
-    staffId:payload.staffId,staffName:payload.staffName,
-    registrationFee:payload.type==="scholarship"?100:"",
-    submissionStatus:"Submitted",
-  });
-  // Preserve all existing columns and their individual sheet ordering.
-  const data=headings.map(h=>{
-   const field=HEADER_KEYS[normalize_(h)];
-   const value=field?String(info[field]??""):"";
-   return /^[=+@\-\t\r]/.test(value)?"'"+value:value;
-  });
-  // Key by stable, server-generated form number so retries cannot duplicate rows.
-  const last=sheet.getLastRow();
-  const previous=last>1?sheet.getRange(2,keyIndex+1,last-1,1)
-     .createTextFinder(String(payload.formNumber)).matchEntireCell(true).findNext():null;
-  const target=previous?previous.getRow():last+1;
-  sheet.getRange(target,1,1,width).setNumberFormat("@").setValues([data]);
-  return ContentService.createTextOutput(JSON.stringify({success:true,row:target}))
-   .setMimeType(ContentService.MimeType.JSON);
+  const secret=PropertiesService.getScriptProperties().getProperty("STAFF_SHEETS_SECRET");
+  if(!secret||payload.secret!==secret)throw Error("Unauthorized");
+  locked=lock.tryLock(25000);
+  if(!locked)throw Error("Busy: retry request");
+  let result;
+  switch(payload.action){
+   case "upsert":result=upsertSheet_(payload);break;
+   case "saveDocuments":result=saveDocuments_(payload);break;
+   case "uploadCourseLogo":result=uploadCourseLogo_(payload);break;
+   case "getCourseLogo":result=getLogo_(payload);break;
+   case "deleteCourseLogo":result=deleteLogo_(payload);break;
+   case "getPdf":result=fetchPdf_(payload);break;
+   default:throw Error("Unsupported operation");
+  }
+  return response_(result);
  }catch(err){
-  return ContentService.createTextOutput(JSON.stringify({success:false,error:String(err.message||err)}))
-   .setMimeType(ContentService.MimeType.JSON);
+  return response_({success:false,error:String(err.message||err).slice(0,250)});
  }finally{if(locked)lock.releaseLock();}
 }
