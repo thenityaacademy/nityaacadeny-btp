@@ -8,11 +8,11 @@ export default function TopBar() {
         <div className="flex items-center gap-4">
           <a href="mailto:thenityaacademy@gmail.com" className="flex items-center gap-1.5 hover:text-primary-light transition-colors">
             <Mail size={14} />
-            <span className="hidden sm:inline">thenityaacademy@gmail.com</span>
+            <span className="hidden lg:inline">thenityaacademy@gmail.com</span>
           </a>
           <a href="tel:+919680008384" className="flex items-center gap-1.5 hover:text-primary-light transition-colors">
             <Phone size={14} />
-            <span className="hidden sm:inline">+91 96800 08384</span>
+            <span className="hidden md:inline">+91 96800 08384</span>
           </a>
         </div>
         <div className="flex shrink-0 items-center gap-2">
