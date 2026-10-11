@@ -6,7 +6,6 @@ export interface Env {
   SHEET_API_SECRET: string;
   STAFF_SHEETS_URL?: string;
   STAFF_SHEETS_SECRET?: string;
-  STAFF_FILES?: R2Bucket;
   STAFF_SUBMISSIONS_ENABLED?: string;
 }
 
