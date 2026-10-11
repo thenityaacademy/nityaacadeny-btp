@@ -1,8 +1,11 @@
+import { handleStaffAuth } from "./staff-portal/worker-auth";
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
   ADMIN_PASSWORD: string;
   SHEET_API_SECRET: string;
+  STAFF_SHEETS_URL?: string;
+  STAFF_SHEETS_SECRET?: string;
 }
 
 const ADMIN_USERNAME = "thenityaacademy@gmail.com";
@@ -172,6 +175,14 @@ export default {
   ): Promise<Response> {
     const url =
       new URL(request.url);
+
+    // Staff portal requests must be handled before existing public routes.
+    // Admin privilege is verified using the existing signed admin session.
+    if (url.pathname.startsWith("/api/staff/") || url.pathname.startsWith("/api/admin/staff/")) {
+      const isAdmin = !!env.ADMIN_PASSWORD && await verifySession(request, env.ADMIN_PASSWORD);
+      const response = await handleStaffAuth(request, env, isAdmin);
+      if (response) return response;
+    }
 
     // ---------------- ADMIN LOGIN ----------------
 
