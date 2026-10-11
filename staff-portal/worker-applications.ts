@@ -1,3 +1,4 @@
+import { driveReady,driveRequest,toBase64,type DriveBridgeEnv } from "./worker-drive";
 import { listStaffCourses } from "./worker-courses";
 /**
  * Phase 4: authenticated applications to D1 (not yet deployed).
@@ -6,12 +7,12 @@ import { listStaffCourses } from "./worker-courses";
  */
 type DB = D1Database;
 type Kind = "admission" | "scholarship";
-type Env = { DB: DB; STAFF_FILES?: R2Bucket; STAFF_SUBMISSIONS_ENABLED?: string };
+type Env = { DB: DB; STAFF_SUBMISSIONS_ENABLED?: string } & DriveBridgeEnv;
 type Staff = { id:string; name:string };
 const photoMime:Record<string,{ext:string,valid:(b:Uint8Array)=>boolean}>={
   "image/png":{ext:"png",valid:b=>b.length>=8&&[137,80,78,71,13,10,26,10].every((x,i)=>b[i]===x)},
   "image/jpeg":{ext:"jpg",valid:b=>b.length>=3&&b[0]===255&&b[1]===216&&b[2]===255},
-  "image/webp":{ext:"webp",valid:b=>b.length>=12&&[82,73,70,70].every((x,i)=>b[i]===x)&&[87,69,66,80].every((x,i)=>b[i+8]===x)}
+
 };
 const allowable = new Set([
   "studentName","fatherName","motherName","dob","gender","mobile","whatsapp",
@@ -62,10 +63,10 @@ export async function saveStaffApplication(request:Request,env:Env,staff:Staff,k
   // Block live student writes until private storage, PDF generation, and security tests are complete.
   if(env.STAFF_SUBMISSIONS_ENABLED!=="true")
     return fail("Staff Admissions are not open yet. Please contact Admin.",503);
-  if(!env.STAFF_FILES)
-    return fail("Private R2 file storage must be configured before accepting student records.",503);
+  if(!driveReady(env))
+    return fail("Google Drive bridge is not configured for the Staff Portal.",503);
   if((request.headers.get("content-length")||"0")!=="0" &&
-     Number(request.headers.get("content-length"))>5_400_000) return fail("Form too large",413);
+     Number(request.headers.get("content-length"))>3_000_000) return fail("Form too large",413);
   if(!(request.headers.get("content-type")||"").startsWith("multipart/form-data;")) return fail("Expected multipart form");
   let form:FormData;
   try{form=await request.formData();}catch{return fail("Invalid form data");}
@@ -80,9 +81,9 @@ export async function saveStaffApplication(request:Request,env:Env,staff:Staff,k
     if(typeof value!=="string" || Object.hasOwn(fields,key)) return fail("Invalid or duplicate field");
     fields[key]=value;
   }
-  if(!photo||photo.size<1||photo.size>5_000_000)return fail("Student photo required (maximum 5 MB)");
+  if(!photo||photo.size<1||photo.size>2_500_000)return fail("Student photo required (maximum 2.5 MB)");
   const format=photoMime[photo.type];
-  if(!format)return fail("Photo must be PNG, JPG or WEBP");
+  if(!format)return fail("Photo must be PNG or JPG");
   const photoBytes=new Uint8Array(await photo.arrayBuffer());
   if(!format.valid(photoBytes))return fail("Photo format does not match the file contents");
   const error=validate(kind,fields);
@@ -109,29 +110,58 @@ export async function saveStaffApplication(request:Request,env:Env,staff:Staff,k
     if(!seq)return fail("Scholarship registration series not configured or exhausted",503);
     formNumber=seq.prefix+seq.issued_number;
   } else formNumber="NA-ADM-"+dateCode()+"-"+id.slice(0,8).toUpperCase();
-  // Store student image in private R2, never give it a public URL.
-  const photoKey="student-photos/"+id+"."+format.ext;
-  try {
-    await env.STAFF_FILES.put(photoKey,photoBytes,{httpMetadata:{contentType:photo.type}});
-  }catch(error) {
-    console.error("Student photo upload failed",error);
-    return fail("Photo storage failed; application was not submitted",503);
-  }
+  // D1 is the authoritative record. If Drive fails, keep a pending record that
+  // can be retried by Admin without issuing a duplicate form number.
   let saved=false;
   try {
-    const result=await env.DB.prepare(`INSERT INTO student_applications
-      (id,kind,form_number,staff_id,student_name,mobile,course_id,fields_json,photo_r2_key,payment_mode,fee_amount,sheet_sync_status)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending')`).bind(
-        id,kind,formNumber,staff.id,fields.studentName,fields.mobile,
-        kind==="admission"?fields.course:"ecce",JSON.stringify(fields),photoKey,
-        kind==="scholarship"?fields.paymentMode:null,Math.round(fee*100)
-      ).run();
-    saved=result.success;
-  }catch(error) {console.error("Application record save failed",error);}
-  if(!saved) {
-    await env.STAFF_FILES.delete(photoKey).catch(()=>{});
-    return fail("Could not save application. Please contact Admin.",503);
+    const result=await env.DB.prepare(
+      "INSERT INTO student_applications(id,kind,form_number,staff_id,student_name,mobile,course_id,fields_json,payment_mode,fee_amount,sheet_sync_status) VALUES (?,?,?,?,?,?,?,?,?,?,'pending')"
+    ).bind(id,kind,formNumber,staff.id,fields.studentName,fields.mobile,
+      kind==="admission"?fields.course:"ecce",JSON.stringify(fields),
+      kind==="scholarship"?fields.paymentMode:null,Math.round(fee*100)).run();
+    saved=!!result.success;
+  }catch(e){console.error("Student application D1 insert failed",e);}
+  if(!saved)return fail("Unable to save application. Contact Admin.",503);
+  const [logoRow,settings]=await Promise.all([
+    kind==="admission"?env.DB.prepare("SELECT extra_logo_drive_id,extra_logo_active FROM staff_courses WHERE course_id=?").bind(fields.course).first<{extra_logo_drive_id:string|null,extra_logo_active:number}>():Promise.resolve(null),
+    env.DB.prepare("SELECT setting_value FROM portal_settings WHERE setting_key=?").bind(kind==="admission"?"admissionTerms":"scholarshipTerms").first<{setting_value:string}>()
+  ]);
+  const createdAt=new Date().toISOString();
+  let pdfFileId="",photoFileId="",pdfStatus="pending",sheetSyncStatus="pending";
+  const common={
+    recordId:id,type:kind,formNumber,createdAt,
+    studentName:fields.studentName,mobile:fields.mobile,
+    staffId:staff.id,staffName:staff.name,fields,
+  };
+  try{
+    const docs=await driveRequest(env,{
+      action:"saveDocuments",...common,photoBase64:toBase64(photoBytes),
+      photoMime:photo.type,terms:settings?.setting_value||"",
+      courseLogoFileId:logoRow?.extra_logo_active===1?logoRow.extra_logo_drive_id:null,
+    });
+    pdfFileId=String(docs.pdfFileId||"");
+    photoFileId=String(docs.photoFileId||"");
+    if(!pdfFileId || !photoFileId)throw Error("Google Drive returned incomplete document references");
+    await env.DB.prepare("UPDATE student_applications SET photo_drive_id=?,pdf_drive_id=? WHERE id=?")
+      .bind(photoFileId,pdfFileId,id).run();
+    pdfStatus="ready";
+  }catch(e){console.error("Application PDF/Photo generation failed",e);}
+  if(pdfStatus==="ready"){
+    try{
+      await driveRequest(env,{action:"upsert",...common,photoFileId,pdfFileId});
+      await env.DB.prepare("UPDATE student_applications SET sheet_sync_status='synced',sheet_last_error=NULL WHERE id=?").bind(id).run();
+      sheetSyncStatus="synced";
+    }catch(e){
+      console.error("Student application Google Sheets sync failed",e);
+      await env.DB.prepare("UPDATE student_applications SET sheet_sync_status='failed',sheet_last_error=? WHERE id=?")
+        .bind("Sheet write failed; retry from Admin",id).run();
+      sheetSyncStatus="failed";
+    }
   }
-  await env.DB.prepare("INSERT INTO staff_activity(staff_id,action,reference_id) VALUES (?,?,?)").bind(staff.id,kind+"_submitted",id).run().catch(()=>{});
-  return Response.json({success:true,number:formNumber,recordId:id,pdfStatus:"pending",sheetSyncStatus:"pending"},{status:201,headers:{"Cache-Control":"no-store"}});
+  await env.DB.prepare("INSERT INTO staff_activity(staff_id,action,reference_id) VALUES (?,?,?)")
+    .bind(staff.id,kind+"_submitted",id).run().catch(()=>{});
+  return Response.json({
+    success:true,number:formNumber,recordId:id,pdfStatus,sheetSyncStatus,
+    pdfUrl:pdfStatus==="ready"?"/api/staff/pdf/"+id:undefined
+  },{status:201,headers:{"Cache-Control":"no-store"}});
 }
