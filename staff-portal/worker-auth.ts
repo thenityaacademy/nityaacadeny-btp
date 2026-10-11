@@ -1,3 +1,4 @@
+import { syncApplications } from "./worker-sheets";
 import { saveStaffApplication } from "./worker-applications";
 /**
  * Staff-only API handler for Cloudflare Workers.
@@ -125,6 +126,30 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
     const changed=await env.DB.prepare("UPDATE staff SET active=? WHERE id=?").bind(active?1:0,id).run();
     if(!active) await env.DB.prepare("UPDATE staff_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE staff_id=?").bind(id).run();
     return json({success:true,updated:changed.meta.changes});
+  }
+  if(pathname==="/api/admin/staff/registration-series" && request.method==="GET") {
+    if(!isAdmin) return json({error:"Admin required"},403);
+    const series=await env.DB.prepare("SELECT sequence_key,prefix,next_number,end_number FROM registration_sequences WHERE sequence_key='scholarship'").first();
+    return json({series:series||null});
+  }
+  if(pathname==="/api/admin/staff/registration-series" && post) {
+    if(!isAdmin) return json({error:"Admin required"},403);
+    const body=await credentials(request)||{};
+    const {prefix,start,end}=body;
+    if(typeof prefix!=="string"||!/[A-Za-z]/.test(prefix)&&prefix!==""||! /^[A-Za-z0-9-]{0,20}$/.test(prefix)
+      ||!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<1||end<start||end>999999999)
+      return json({error:"Invalid registration number range"},400);
+    const prior=await env.DB.prepare("SELECT next_number FROM registration_sequences WHERE sequence_key='scholarship'").first<{next_number:number}>();
+    if(prior && start<prior.next_number) return json({error:"Start cannot be lower than the next unused number"},409);
+    const existing=await env.DB.prepare("SELECT COUNT(*) AS n FROM student_applications WHERE kind='scholarship' AND form_number LIKE ?").bind(prefix+"%").first<{n:number}>();
+    if(existing && existing.n>0 && prior && start!==prior.next_number)
+      return json({error:"Registration series already used; change next number only after audit"},409);
+    await env.DB.prepare("INSERT INTO registration_sequences(sequence_key,prefix,next_number,end_number) VALUES ('scholarship',?,?,?) ON CONFLICT(sequence_key) DO UPDATE SET prefix=excluded.prefix,next_number=excluded.next_number,end_number=excluded.end_number").bind(prefix,start,end).run();
+    return json({success:true});
+  }
+  if(pathname==="/api/admin/staff/sync-sheets" && post) {
+    if(!isAdmin) return json({error:"Admin required"},403);
+    return json(await syncApplications(env));
   }
   return json({error:"Not implemented"},501);
 }
