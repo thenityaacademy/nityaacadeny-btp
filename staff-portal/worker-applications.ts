@@ -1,3 +1,4 @@
+import { listStaffCourses } from "./worker-courses";
 /**
  * Phase 4: authenticated applications to D1 (not yet deployed).
  * PDF/Google Sheets are deliberately NOT claimed complete in this phase.
@@ -9,30 +10,43 @@ type Env = { DB: DB };
 type Staff = { id:string; name:string };
 const allowable = new Set([
   "studentName","fatherName","motherName","dob","gender","mobile","whatsapp",
-  "email","aadhaar","address","district","state","pin","board12","year12",
-  "percent12","lastQualification","course","session","totalFees",
-  "practicalApplicable","practicalFee","hasReference","referenceName",
-  "registrationDate","examDate","passed12","paymentMode","transactionRef"
+  "email","aadhaar","address","city","district","state","pin","passed10",
+  "board10","year10","percent10","passed12","board12","year12",
+  "percent12","lastQualification","lastBoard","lastYear","lastPercent",
+  "course","session","totalFees","practicalApplicable","practicalFee",
+  "hasReference","referenceName","examDate","paymentMode","transactionRef"
 ]);
 const fail = (error:string,status=400)=>Response.json({error},{status,headers:{"Cache-Control":"no-store"}});
-const isDate = (x:string)=>/^\d{4}-\d{2}-\d{2}$/.test(x)&&!Number.isNaN(Date.parse(x));
+const isDate = (x:string)=>/^\\d{4}-\\d{2}-\\d{2}$/.test(x)&&!Number.isNaN(Date.parse(x));
 const str = (fields:Record<string,string>,key:string)=>fields[key]?.trim()||"";
+const yearValid = (s:string) => /^(19|20)\\d{2}$/.test(s) && Number(s) <= new Date().getFullYear()+1;
+const percentValid=(s:string)=>!s || (Number.isFinite(Number(s)) && Number(s)>=0 && Number(s)<=100);
 function validate(kind:Kind,fields:Record<string,string>) {
   for(const k of Object.keys(fields)) if(!allowable.has(k)) return "Unsupported form field: "+k;
-  for(const k of ["studentName","fatherName","dob","mobile","address","district"]) if(!str(fields,k)) return k+" is required";
+  for(const k of ["studentName","fatherName","dob","mobile","address","district","gender","aadhaar"])
+    if(!str(fields,k)) return k+" is required";
   if(str(fields,"studentName").length>120 || str(fields,"address").length>700) return "Text too long";
   if(!isDate(str(fields,"dob"))) return "Invalid birth date";
-  if(!/^[6-9]\d{9}$/.test(str(fields,"mobile"))) return "Enter a valid Indian mobile number";
-  const aadhaar=str(fields,"aadhaar");
-  if(aadhaar && !/^\d{12}$/.test(aadhaar)) return "Aadhaar must have 12 digits";
+  if(!/^[6-9]\\d{9}$/.test(str(fields,"mobile"))) return "Enter a valid Indian mobile number";
+  if(!/^[2-9]\\d{11}$/.test(str(fields,"aadhaar"))) return "Aadhaar must contain exactly 12 digits";
+  if(!["male","female","other","prefer-not-to-say"].includes(str(fields,"gender")))
+    return "Select gender";
   for(const value of Object.values(fields)) if(value.length>1200) return "Field length exceeded";
   if(kind==="admission") {
+    if(!["yes","no"].includes(str(fields,"passed10"))) return "Select 10th pass status";
+    if(!["yes","no"].includes(str(fields,"passed12"))) return "Select 12th pass status";
+    if(str(fields,"passed10")==="yes" && (!str(fields,"board10") || !yearValid(str(fields,"year10")) || !percentValid(str(fields,"percent10"))))
+      return "Enter valid 10th board, passing year and percentage";
+    if(str(fields,"passed12")==="yes" && (!str(fields,"board12") || !yearValid(str(fields,"year12")) || !percentValid(str(fields,"percent12"))))
+      return "Enter valid 12th board, passing year and percentage";
     if(!str(fields,"course")) return "Select course";
-    if(!/^\d+(\.\d{1,2})?$/.test(str(fields,"totalFees"))) return "Invalid total fees";
-    if(str(fields,"practicalApplicable")==="yes"&&!/^\d+(\.\d{1,2})?$/.test(str(fields,"practicalFee"))) return "Enter practical fees";
+    if(!/^\\d+(\\.\\d{1,2})?$/.test(str(fields,"totalFees"))) return "Invalid total fees";
+    if(str(fields,"practicalApplicable")==="yes"&&!/^\\d+(\\.\\d{1,2})?$/.test(str(fields,"practicalFee"))) return "Enter practical fees";
     if(str(fields,"hasReference")==="yes"&&!str(fields,"referenceName")) return "Enter reference name";
   } else {
-    if(str(fields,"passed12")!=="yes") return "ECCE scholarship requires 12th pass";
+    if(str(fields,"passed12")!=="yes") return "12th pass is required for ECCE scholarship";
+    if(!yearValid(str(fields,"year12"))) return "Enter 12th passing year";
+    if(!str(fields,"lastQualification")) return "Enter last qualification";
     if(!["cash","online"].includes(str(fields,"paymentMode"))) return "Select payment mode";
     if(str(fields,"examDate")&&!isDate(str(fields,"examDate"))) return "Invalid exam date";
   }
@@ -58,8 +72,14 @@ export async function saveStaffApplication(request:Request,env:Env,staff:Staff,k
   const error=validate(kind,fields);
   if(error)return fail(error);
   if(kind==="admission"){
-    const course=await env.DB.prepare("SELECT course_id,default_fee FROM staff_courses WHERE course_id=? AND active=1").bind(fields.course).first<{course_id:string;default_fee:number|null}>();
+    const course=(await listStaffCourses(env)).find(c=>c.id===fields.course && c.active);
     if(!course)return fail("Selected course is inactive or unavailable");
+    // Hide educational details when a qualification is explicitly not passed.
+    if(fields.passed10==="no") for(const key of ["board10","year10","percent10"]) delete fields[key];
+    if(fields.passed12==="no") for(const key of ["board12","year12","percent12"]) delete fields[key];
+  } else {
+    // Registration date and course are server-derived; never trust browser input.
+    fields.registrationDate=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Kolkata",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   }
   const id=crypto.randomUUID();
   let formNumber:string;
