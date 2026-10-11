@@ -109,10 +109,36 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
     if(typeof id!=="string"||!/^NA-STF-[0-9]{3,8}$/.test(id)||
        typeof name!=="string"||name.trim().length<2||name.length>100||
        typeof password!=="string"||password.length<12||password.length>128) return json({error:"Invalid staff details. Password must be 12+ characters."},400);
+    // Only report duplicate ID for an actual matching record. A crypto / D1
+    // failure must never be mislabeled as a duplicate.
     try {
-      await env.DB.prepare("INSERT INTO staff(id,username,full_name,password_hash) VALUES (?,?,?,?)").bind(id,id,name.trim(),await passwordHash(password)).run();
+      const alreadyExists=await env.DB.prepare("SELECT id FROM staff WHERE id=? OR username=? LIMIT 1").bind(id,id).first();
+      if(alreadyExists) return json({error:"Staff ID already exists"},409);
+    } catch(error) {
+      console.error("Staff existence lookup failed",error);
+      return json({error:"Staff database unavailable. Please retry shortly."},503);
+    }
+    let hashedPassword:string;
+    try {
+      hashedPassword=await passwordHash(password);
+    } catch(error) {
+      console.error("Staff password hashing failed",error);
+      return json({error:"Staff password encryption failed. Please contact admin."},503);
+    }
+    try {
+      const saved=await env.DB.prepare("INSERT INTO staff(id,username,full_name,password_hash) VALUES (?,?,?,?)")
+        .bind(id,id,name.trim(),hashedPassword).run();
+      if(!saved.success || saved.meta.changes!==1)
+        throw new Error("Staff insert did not modify exactly one row");
       return json({success:true,id},201);
-    } catch { return json({error:"Staff ID already exists"},409); }
+    } catch(error) {
+      console.error("Staff insert failed",error);
+      // SQLite's UNIQUE constraint failure can be reported as a duplicate.
+      const reason=String(error);
+      if(/UNIQUE constraint failed/i.test(reason))
+        return json({error:"Staff ID already exists"},409);
+      return json({error:"Unable to save Staff Account. Please contact admin."},503);
+    }
   }
   if(pathname==="/api/admin/staff/list" && request.method==="GET") {
     if(!isAdmin) return json({error:"Admin required"},403);
