@@ -1,3 +1,4 @@
+import { driveReady,driveRequest,fromBase64 } from "./worker-drive";
 import { handleCourseLogo,setCourseLogoStatus } from "./worker-course-logos";
 import { listStaffCourses } from "./worker-courses";
 import { syncApplications } from "./worker-sheets";
@@ -46,7 +47,7 @@ function forbidCrossSite(request: Request) {
   }
   return false;
 }
-type Env = { DB: D1Database; STAFF_FILES?: R2Bucket; STAFF_SHEETS_URL?:string; STAFF_SHEETS_SECRET?:string; STAFF_SUBMISSIONS_ENABLED?:string };
+type Env = { DB: D1Database; STAFF_SHEETS_URL?:string; STAFF_SHEETS_SECRET?:string; STAFF_SUBMISSIONS_ENABLED?:string };
 async function session(request: Request, env: Env) {
   const token=cookie(request);
   if(!/^[0-9a-f]{64}$/.test(token)) return null;
@@ -102,8 +103,8 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
     const settingsMap=Object.fromEntries(settings.results.map(s=>[s.setting_key,s.setting_value]));
     return json({enquiryUrl:settingsMap.enquiryUrl||"",admissionTerms:settingsMap.admissionTerms||"",
       scholarshipTerms:settingsMap.scholarshipTerms||"",courses:courses.filter(c=>c.active),
-      photoStorageEnabled:!!env.STAFF_FILES,
-      submissionsEnabled:!!env.STAFF_FILES && env.STAFF_SUBMISSIONS_ENABLED==="true"});
+      photoStorageEnabled:driveReady(env),
+      submissionsEnabled:driveReady(env) && env.STAFF_SUBMISSIONS_ENABLED==="true"});
   }
   if((pathname==="/api/staff/admission" || pathname==="/api/staff/scholarship") && post) {
     const staff=await session(request,env);
@@ -117,6 +118,29 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
   if(pathname==="/api/admin/staff/course-logo-status" && post) {
     if(!isAdmin) return json({error:"Admin required"},403);
     return setCourseLogoStatus(request,env);
+  }
+  // PDF bytes are streamed through authenticated Worker, never public Drive links.
+  if(pathname.startsWith("/api/staff/pdf/") && request.method==="GET"){
+    const staff=await session(request,env);
+    if(!staff) return json({error:"Unauthorized"},401);
+    const id=pathname.slice("/api/staff/pdf/".length);
+    if(!/^[0-9a-f-]{36}$/i.test(id))return json({error:"Invalid PDF ID"},400);
+    const row=await env.DB.prepare(
+      "SELECT staff_id,kind,form_number,pdf_drive_id FROM student_applications WHERE id=?"
+    ).bind(id).first<{staff_id:string;kind:string;form_number:string;pdf_drive_id:string|null}>();
+    if(!row || row.staff_id!==staff.id)return json({error:"Application not found"},404);
+    if(!row.pdf_drive_id)return json({error:"PDF is not generated yet"},404);
+    try{
+      const response=await driveRequest(env,{action:"getPdf",type:row.kind,fileId:row.pdf_drive_id});
+      const bytes=fromBase64(String(response.base64||""));
+      const filename="Nitya-Academy-"+row.form_number.replace(/[^a-zA-Z0-9_-]/g,"")+".pdf";
+      return new Response(bytes,{headers:{
+        "Content-Type":"application/pdf",
+        "Content-Disposition":'attachment; filename="'+filename+'"',
+        "Cache-Control":"private, no-store",
+        "X-Content-Type-Options":"nosniff",
+      }});
+    }catch(e){console.error("PDF download failed",e);return json({error:"Unable to download PDF; contact Admin"},503);}
   }
   if(pathname==="/api/admin/staff/create" && post) {
     if(!isAdmin) return json({error:"Admin required"},403);
