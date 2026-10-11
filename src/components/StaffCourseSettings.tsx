@@ -108,7 +108,7 @@ export default function StaffCourseSettings(){
               <div className="flex items-center gap-2 flex-wrap">
                 <label className="relative inline-flex gap-2 items-center text-xs rounded-lg bg-white border px-3 py-2 cursor-pointer">
                   <ImagePlus size={15}/> {course.hasLogo?"Replace Logo":"Upload Logo"}
-                  <input type="file" accept="image/png,image/jpeg,image/webp"
+                  <input type="file" accept="image/png,image/jpeg"
                     disabled={pending===course.id}
                     className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
                     onChange={e=>{void upload(course,e.target.files?.[0]||null);e.currentTarget.value="";}}/>
@@ -126,6 +126,6 @@ export default function StaffCourseSettings(){
         </div>
       </div> : null;
     })}
-    <p className="text-xs text-slate-500">PNG/JPG/WEBP, max 2 MB. Upload requires a private Cloudflare R2 bucket bound as STAFF_FILES. Current PDF generation remains pending.</p>
+    <p className="text-xs text-slate-500">JPG/PNG, maximum 2 MB. Course logos are stored privately in Nitya Academy Google Drive. Upload requires the updated Google Apps Script deployment and matching Preview secret.</p>
   </section>;
 }
