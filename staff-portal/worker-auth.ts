@@ -8,6 +8,8 @@ import { saveStaffApplication } from "./worker-applications";
  */
 const COOKIE = "nitya_staff_session";
 const ttlMs = 8 * 60 * 60 * 1000;
+// Workers WebCrypto limits PBKDF2 to 100,000 iterations per deriveBits operation.
+// Before production release: evaluate a memory-hard KDF and implement login rate limiting.
 const encoder = new TextEncoder();
 const json = (body: unknown, status = 200, headers: Record<string,string> = {}) =>
   Response.json(body, { status, headers: { "Cache-Control": "no-store", ...headers } });
@@ -19,12 +21,12 @@ const random = () => {
 };
 async function passwordHash(password: string, salt = random()) {
   const material = await crypto.subtle.importKey("raw",encoder.encode(password),"PBKDF2",false,["deriveBits"]);
-  const hash = await crypto.subtle.deriveBits({ name:"PBKDF2",salt:encoder.encode(salt),iterations:210000,hash:"SHA-256" },material,256);
-  return "pbkdf2-sha256$210000$" + salt + "$" + hex(hash);
+  const hash = await crypto.subtle.deriveBits({ name:"PBKDF2",salt:encoder.encode(salt),iterations:100000,hash:"SHA-256" },material,256);
+  return "pbkdf2-sha256$100000$" + salt + "$" + hex(hash);
 }
 async function verifyPassword(password: string, stored: string) {
   const parts=stored.split("$");
-  if(parts.length!==4 || parts[0]!=="pbkdf2-sha256" || parts[1]!=="210000") return false;
+  if(parts.length!==4 || parts[0]!=="pbkdf2-sha256" || parts[1]!=="100000") return false;
   const attempted=await passwordHash(password,parts[2]);
   const a=encoder.encode(attempted),b=encoder.encode(stored);
   if(a.length!==b.length) return false;
