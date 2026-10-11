@@ -4,20 +4,16 @@ import { LogIn, LogOut, FileText, GraduationCap, ClipboardList, AlertCircle } fr
 
 type Staff = { id: string; name: string };
 type Counts = { enquiries: number; admissions: number; scholarships: number };
-type Config = { enquiryUrl?: string; courses?: { id: string; name: string }[]; admissionTerms?: string; scholarshipTerms?: string };
+type PortalCourse = { id: string; name: string; category: string; active: boolean; defaultFee: number | null };
+type Config = { enquiryUrl?: string; courses?: PortalCourse[]; admissionTerms?: string; scholarshipTerms?: string };
 type Kind = "admission" | "scholarship";
 const enquiryFallback = "https://docs.google.com/forms/d/e/1FAIpQLSfF9DJ9QMfzqFeB6LKYBT62-rPcwo8cCahNyZFW0oHDrYpLoA/viewform?usp=header";
-const fields = [
-  ["studentName", "Student Name", "text", true], ["fatherName", "Father Name", "text", true],
-  ["motherName", "Mother Name", "text", false], ["dob", "Date of Birth", "date", true],
-  ["gender", "Gender", "text", false], ["mobile", "Mobile Number", "tel", true],
-  ["whatsapp", "WhatsApp Number", "tel", false], ["email", "Email", "email", false],
-  ["aadhaar", "Aadhaar Number", "text", false], ["address", "Full Address", "text", true],
-  ["district", "District", "text", true], ["state", "State", "text", false],
-  ["pin", "PIN Code", "text", false], ["board12", "12th Board", "text", false],
-  ["year12", "12th Passing Year", "text", false], ["percent12", "12th Percentage", "text", false],
-  ["lastQualification", "Last Qualification", "text", false],
-] as const;
+const courseGroups = [
+  { id: "vocational", name: "Vocational Courses" },
+  { id: "skill", name: "Skill Courses" },
+  { id: "university", name: "University Courses" },
+  { id: "other", name: "Other Courses" }
+];
 
 async function request(path: string, options?: RequestInit) {
   const res = await fetch(path, { credentials: "include", cache: "no-store", ...options });
@@ -27,12 +23,45 @@ async function request(path: string, options?: RequestInit) {
 }
 function Form({ kind, staff, config, onDone }: { kind: Kind; staff: Staff; config: Config; onDone: () => void }) {
   const [values, setValues] = useState<Record<string, string>>({});
-  const [photo, setPhoto] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<{ number: string; pdfUrl?: string; pdfStatus?: string; sheetSyncStatus?: string } | null>(null);
+  const [result, setResult] = useState<{
+    number: string; pdfUrl?: string; pdfStatus?: string; sheetSyncStatus?: string;
+  } | null>(null);
+  const [shareNumber,setShareNumber]=useState("");
   const terms = kind === "admission" ? config.admissionTerms : config.scholarshipTerms;
-  const set = (name: string, value: string) => setValues(p => ({ ...p, [name]: value }));
+  const courses = (config.courses || []).filter(c => c.active);
+  const set = (name: string, value: string) => {
+    setValues(p => {
+      const next = {...p, [name]: value};
+      if(name === "passed10" && value === "no") for(const key of ["board10","year10","percent10"]) delete next[key];
+      if(name === "passed12" && value === "no") for(const key of ["board12","year12","percent12"]) delete next[key];
+      return next;
+    });
+  };
+  const v = (key:string) => values[key] || "";
+  const field = (key:string,label:string,required=false,type="text",extras?:{
+    inputMode?:"numeric"|"tel"|"decimal"; maxLength?:number; placeholder?:string;
+  }) => <label key={key} className="block text-sm font-medium text-slate-700">{label}{required ? " *" : ""}
+    <input name={key} className="mt-1 block w-full rounded-lg border border-slate-300 p-3 bg-white" type={type}
+      required={required} value={v(key)} inputMode={extras?.inputMode} maxLength={extras?.maxLength}
+      placeholder={extras?.placeholder} onChange={e=>{
+        const next=(key==="aadhaar"||key==="pin"||key==="year10"||key==="year12"||key==="mobile"||key==="whatsapp")
+          ? e.target.value.replace(/\D/g,"") : e.target.value;
+        set(key,next);
+      }}
+      pattern={key==="aadhaar"?"[0-9]{12}":(key==="mobile"||key==="whatsapp")?"[0-9]{10}":undefined}
+    />
+  </label>;
+  const select = (key:string,label:string,options:{value:string,label:string}[],required=false) =>
+    <label key={key} className="block text-sm font-medium text-slate-700">{label}{required?" *":""}
+      <select required={required} className="mt-1 block w-full rounded-lg border border-slate-300 p-3 bg-white"
+        value={v(key)} onChange={e=>set(key,e.target.value)}>
+        <option value="">Select {label}</option>
+        {options.map(o=><option value={o.value} key={o.value}>{o.label}</option>)}
+      </select>
+    </label>;
+  const yesNo=[{value:"yes",label:"Yes"},{value:"no",label:"No"}];
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
@@ -40,52 +69,155 @@ function Form({ kind, staff, config, onDone }: { kind: Kind; staff: Staff; confi
     try {
       const body = new FormData();
       Object.entries(values).forEach(([key, value]) => body.append(key, value));
-      if (photo) body.append("photo", photo);
-      // Never trust client-supplied staff identity or registration numbers.
+      if(kind==="scholarship") body.set("passed12","yes");
+      // The staff identity and scholarship registration number are generated by server.
       const data = await request("/api/staff/" + kind, { method: "POST", body });
-      setResult({ number: String(data.number), pdfUrl: data.pdfUrl, pdfStatus: data.pdfStatus, sheetSyncStatus: data.sheetSyncStatus });
+      setResult({ number: String(data.number), pdfUrl: data.pdfUrl, pdfStatus:data.pdfStatus,
+        sheetSyncStatus:data.sheetSyncStatus });
+      setShareNumber((values.whatsapp||values.mobile||"").replace(/\D/g,""));
       onDone();
     } catch (e) { setError(e instanceof Error ? e.message : "Submission failed"); }
     finally { setBusy(false); }
   };
-  if (result) return <section className="rounded-2xl bg-white border p-8 space-y-4">
-    <h2 className="text-2xl font-bold text-green-700">Application submitted</h2>
-    <p>Number: <strong>{result.number}</strong></p>
-    <p className="text-sm text-amber-800">PDF: {result.pdfStatus === "pending" ? "Pending generation" : (result.pdfStatus || "Unavailable")} · Google Sheet: {result.sheetSyncStatus || "Not confirmed"}</p>
-    {result.pdfUrl && <div className="flex gap-4 flex-wrap">
-      <a href={result.pdfUrl} target="_blank" rel="noopener noreferrer" className="pill-btn-primary">Download PDF</a>
-      <a href={`https://wa.me/?text=${encodeURIComponent("Nitya Academy application " + result.number + ": " + result.pdfUrl)}`} target="_blank" rel="noopener noreferrer" className="pill-btn-outline">Share PDF Link</a>
-    </div>}
-  </section>;
-  return <form onSubmit={submit} className="rounded-2xl bg-white border p-5 md:p-8 space-y-5">
-    <h2 className="text-2xl font-bold">{kind === "admission" ? "Student Admission" : "ECCE Scholarship"} Form</h2>
-    <p className="text-sm text-slate-600">Staff reference: <strong>{staff.name} ({staff.id})</strong> — verified by server</p>
-    <div className="grid sm:grid-cols-2 gap-4">
-      {fields.map(([name,label,type,required])=><label className="text-sm font-medium" key={name}>{label}{required ? " *" : ""}
-        <input className="mt-1 block w-full rounded-lg border border-slate-300 p-3" type={type} required={required} value={values[name] || ""} onChange={e=>set(name,e.target.value)} />
-      </label>)}
-      {kind === "admission" ? <>
-        <label className="text-sm font-medium">Course *<select required className="mt-1 block w-full rounded-lg border p-3" value={values.course || ""} onChange={e=>set("course",e.target.value)}><option value="">Select Course</option>{(config.courses||[]).map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></label>
-        <label className="text-sm font-medium">Session<input className="mt-1 block w-full rounded-lg border p-3" value={values.session||""} onChange={e=>set("session",e.target.value)}/></label>
-        <label className="text-sm font-medium">Total Fees *<input required min="0" type="number" className="mt-1 block w-full rounded-lg border p-3" value={values.totalFees||""} onChange={e=>set("totalFees",e.target.value)}/></label>
-        <label className="text-sm font-medium">Practical Fees?<select className="mt-1 block w-full rounded-lg border p-3" value={values.practicalApplicable||"no"} onChange={e=>set("practicalApplicable",e.target.value)}><option value="no">No</option><option value="yes">Yes</option></select></label>
-        {values.practicalApplicable==="yes"&&<label className="text-sm font-medium">Practical Fee Amount *<input required min="0" type="number" className="mt-1 block w-full rounded-lg border p-3" value={values.practicalFee||""} onChange={e=>set("practicalFee",e.target.value)}/></label>}
-        <label className="text-sm font-medium">External Reference?<select className="mt-1 block w-full rounded-lg border p-3" value={values.hasReference||"no"} onChange={e=>set("hasReference",e.target.value)}><option value="no">No</option><option value="yes">Yes</option></select></label>
-        {values.hasReference==="yes"&&<label className="text-sm font-medium">Reference Name *<input required className="mt-1 block w-full rounded-lg border p-3" value={values.referenceName||""} onChange={e=>set("referenceName",e.target.value)}/></label>}
-      </> : <>
-        <label className="text-sm font-medium">Registration Date<input type="date" className="mt-1 block w-full rounded-lg border p-3" value={values.registrationDate||new Date().toISOString().slice(0,10)} onChange={e=>set("registrationDate",e.target.value)}/></label>
-        <label className="text-sm font-medium">Exam Date (Optional)<input type="date" className="mt-1 block w-full rounded-lg border p-3" value={values.examDate||""} onChange={e=>set("examDate",e.target.value)}/></label>
-        <label className="text-sm font-medium">12th Pass? *<select required className="mt-1 block w-full rounded-lg border p-3" value={values.passed12||""} onChange={e=>set("passed12",e.target.value)}><option value="">Select</option><option value="yes">Yes</option><option value="no">No</option></select></label>
-        <label className="text-sm font-medium">Registration Fee<input disabled value="₹100" className="mt-1 block w-full rounded-lg border p-3 bg-slate-100" /></label>
-        <label className="text-sm font-medium">Payment Mode *<select required className="mt-1 block w-full rounded-lg border p-3" value={values.paymentMode||""} onChange={e=>set("paymentMode",e.target.value)}><option value="">Select</option><option value="cash">Cash</option><option value="online">Online</option></select></label>
-        {values.paymentMode==="online"&&<label className="text-sm font-medium">Transaction Reference<input className="mt-1 block w-full rounded-lg border p-3" value={values.transactionRef||""} onChange={e=>set("transactionRef",e.target.value)}/></label>}
-      </>}
-      <label className="text-sm font-medium">Student Photo<input type="file" accept="image/jpeg,image/png,image/webp" className="mt-1 block w-full rounded-lg border p-3" onChange={e=>setPhoto(e.target.files?.[0]||null)}/></label>
+  if (result) {
+    const digits=shareNumber.replace(/\D/g,"");
+    const whatsapp=digits.length===10?"91"+digits:digits;
+    const whatsappUrl=result.pdfUrl && /^[0-9]{11,15}$/.test(whatsapp)
+      ? "https://wa.me/"+whatsapp+"?text="+encodeURIComponent(
+        "Hello, your Nitya Academy application "+result.number+" is ready. Download your PDF: "+result.pdfUrl)
+      : "";
+    return <section className="rounded-2xl bg-white border p-6 md:p-8 space-y-4">
+      <h2 className="text-2xl font-bold text-green-700">Application saved</h2>
+      <p>Application / Registration No: <strong>{result.number}</strong></p>
+      <p className="text-sm text-amber-800">
+        PDF: {result.pdfUrl ? "Ready" : "Pending generation"} · Google Sheet: {result.sheetSyncStatus || "Pending sync"}
+      </p>
+      {result.pdfUrl ? <>
+        <a href={result.pdfUrl} target="_blank" rel="noopener noreferrer" className="inline-block pill-btn-primary">Download PDF</a>
+        <label className="block text-sm font-medium max-w-xs">Student WhatsApp Number
+          <input type="tel" inputMode="numeric" maxLength={15} value={shareNumber}
+            onChange={e=>setShareNumber(e.target.value.replace(/\D/g,""))}
+            className="mt-1 block w-full rounded-lg border border-slate-300 p-3"/>
+        </label>
+        {whatsappUrl
+          ? <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-block pill-btn-outline">Open WhatsApp with PDF Link</a>
+          : <p className="text-sm text-amber-700">Enter a valid WhatsApp number to open chat.</p>}
+        <p className="text-xs text-slate-500">WhatsApp opens with a draft. Tap Send yourself. Automatic sending requires WhatsApp Business API approval and recipient consent.</p>
+      </> : <p className="text-sm text-slate-600">PDF download and WhatsApp sharing become available only after secure PDF generation is configured. No PDF has been generated yet.</p>}
+    </section>;
+  }
+  return <form onSubmit={submit} className="rounded-2xl bg-white border p-5 md:p-8 space-y-6">
+    <div>
+      <h2 className="text-2xl font-bold">{kind === "admission" ? "Student Admission" : "ECCE Scholarship"} Form</h2>
+      <p className="text-sm text-slate-600 mt-2">Staff Reference: <strong>{staff.name} ({staff.id})</strong> — verified by server</p>
+      <p className="text-sm text-amber-800 mt-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+        Preview: Do not submit real student details until PDF, photo storage and Google Sheet sync are fully tested.
+      </p>
     </div>
+    <section className="space-y-3">
+      <h3 className="text-lg font-semibold">Personal Details</h3>
+      <div className="grid sm:grid-cols-2 gap-4">
+        {field("studentName","Student Name",true)}
+        {field("fatherName","Father Name",true)}
+        {field("motherName","Mother Name")}
+        {field("dob","Date of Birth",true,"date")}
+        {select("gender","Gender",[
+          {value:"male",label:"Male"},{value:"female",label:"Female"},
+          {value:"other",label:"Other"},{value:"prefer-not-to-say",label:"Prefer not to say"}
+        ],true)}
+        {field("aadhaar","Aadhaar Number (12 Digits)",true,"text",{inputMode:"numeric",maxLength:12,placeholder:"12-digit Aadhaar"})}
+        {field("mobile","Mobile Number",true,"tel",{inputMode:"numeric",maxLength:10})}
+        {field("whatsapp","WhatsApp Number",false,"tel",{inputMode:"numeric",maxLength:10})}
+        {field("email","Email",false,"email")}
+        {field("address","Full Address",true)}
+        {field("city","City / Village")}
+        {field("district","District",true)}
+        {field("state","State")}
+        {field("pin","PIN Code",false,"text",{inputMode:"numeric",maxLength:6})}
+      </div>
+    </section>
+    {kind === "admission" ? <>
+      <section className="space-y-3">
+        <h3 className="text-lg font-semibold">Education Details</h3>
+        <div className="grid sm:grid-cols-2 gap-4">
+          {select("passed10","10th Passed?",yesNo,true)}
+          {values.passed10==="yes"&&<>
+            {field("board10","10th Board",true)}
+            {field("year10","10th Passing Year",true,"text",{inputMode:"numeric",maxLength:4})}
+            {field("percent10","10th Percentage",false,"number")}
+          </>}
+          {select("passed12","12th Passed?",yesNo,true)}
+          {values.passed12==="yes"&&<>
+            {field("board12","12th Board",true)}
+            {field("year12","12th Passing Year",true,"text",{inputMode:"numeric",maxLength:4})}
+            {field("percent12","12th Percentage",false,"number")}
+          </>}
+          {field("lastQualification","Last Qualification")}
+          {field("lastBoard","Last Qualification Board / University")}
+          {field("lastYear","Last Qualification Passing Year",false,"text",{inputMode:"numeric",maxLength:4})}
+          {field("lastPercent","Last Qualification Percentage",false,"number")}
+        </div>
+      </section>
+      <section className="space-y-3">
+        <h3 className="text-lg font-semibold">Course and Fees</h3>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <label className="block text-sm font-medium text-slate-700">Select Course *
+            <select required value={v("course")} onChange={e=>set("course",e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-slate-300 p-3 bg-white">
+              <option value="">Select course</option>
+              {courseGroups.map(group=>{
+                const groupCourses=courses.filter(c=>c.category===group.id);
+                return groupCourses.length>0?<optgroup key={group.id} label={group.name}>
+                  {groupCourses.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>:null;
+              })}
+            </select>
+            {courses.length===0&&<span className="block mt-2 text-red-700">No active courses available. Ask Admin to check Staff Portal course settings.</span>}
+          </label>
+          {field("session","Session")}
+          {field("totalFees","Total Fees (₹)",true,"number")}
+          {select("practicalApplicable","Practical Fees Applicable?",yesNo)}
+          {values.practicalApplicable==="yes" && field("practicalFee","Practical Fee Amount (₹)",true,"number")}
+          {select("hasReference","External Reference?",yesNo)}
+          {values.hasReference==="yes" && field("referenceName","Reference Name",true)}
+        </div>
+      </section>
+    </> : <>
+      <section className="space-y-3">
+        <h3 className="text-lg font-semibold">ECCE Scholarship and Qualification</h3>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="text-sm font-medium text-slate-700">12th Pass (Required)
+            <div className="mt-1 rounded-lg border border-slate-300 bg-slate-100 p-3">Yes — mandatory for ECCE Scholarship</div>
+          </div>
+          {field("year12","12th Passing Year",true,"text",{inputMode:"numeric",maxLength:4})}
+          {field("lastQualification","Last Qualification",true)}
+          {field("examDate","Exam Date (Optional)",false,"date")}
+          <div className="text-sm font-medium text-slate-700">Registration Fee
+            <div className="mt-1 rounded-lg border border-slate-300 bg-slate-100 p-3">₹100</div>
+          </div>
+          {select("paymentMode","Payment Mode",[
+            {value:"cash",label:"Cash"},{value:"online",label:"Online"}
+          ],true)}
+          {values.paymentMode==="online" && field("transactionRef","Transaction Reference (Optional)")}
+        </div>
+      </section>
+    </>}
+    <section className="space-y-2">
+      <h3 className="text-lg font-semibold">Student Photo</h3>
+      <input type="file" accept="image/jpeg,image/png,image/webp" disabled
+        className="block w-full rounded-lg border border-slate-200 bg-slate-100 p-3 cursor-not-allowed"/>
+      <p className="text-sm text-amber-800">Photo upload is not yet available until private file storage is enabled.</p>
+    </section>
     {terms&&<p className="text-sm text-slate-600 whitespace-pre-wrap p-4 bg-slate-50 rounded-xl">{terms}</p>}
-    <label className="flex gap-2 text-sm items-start"><input required type="checkbox" className="mt-1" /> I agree to the terms and confirm that student consent was obtained for this application.</label>
+    <label className="flex gap-2 text-sm items-start">
+      <input required type="checkbox" className="mt-1"/>
+      I confirm that student consent has been obtained and I agree to the Terms & Conditions.
+    </label>
     {error&&<p role="alert" className="text-sm text-red-700 flex gap-2"><AlertCircle size={17}/>{error}</p>}
-    <button disabled={busy} className="pill-btn-primary disabled:opacity-50">{busy?"Submitting...":"Final Submit"}</button>
+    <button disabled={busy || (kind==="admission"&&courses.length===0)}
+      className="pill-btn-primary disabled:opacity-50">
+      {busy?"Submitting...":"Final Submit"}
+    </button>
   </form>;
 }
 export default function StaffPortal() {
