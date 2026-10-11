@@ -81,31 +81,53 @@ function Form({ kind, staff, config, onDone }: { kind: Kind; staff: Staff; confi
     } catch (e) { setError(e instanceof Error ? e.message : "Submission failed"); }
     finally { setBusy(false); }
   };
+  async function shareDocument() {
+    if (!result?.pdfUrl) return;
+    setError("");
+    try{
+      const res=await fetch(result.pdfUrl,{credentials:"include",cache:"no-store"});
+      if(!res.ok)throw new Error("Unable to retrieve PDF");
+      const file=new File([await res.blob()],"Nitya-Academy-"+result.number+".pdf",{type:"application/pdf"});
+      if(!navigator.share || !navigator.canShare?.({files:[file]})){
+        throw new Error("File sharing is not supported on this device. Download the PDF and attach it in WhatsApp manually.");
+      }
+      await navigator.share({title:"Nitya Academy Application",text:"Application "+result.number,files:[file]});
+    }catch(e){
+      if((e as Error).name!=="AbortError")setError(e instanceof Error?e.message:"Unable to share file");
+    }
+  }
   if (result) {
     const digits=shareNumber.replace(/\D/g,"");
     const whatsapp=digits.length===10?"91"+digits:digits;
-    const whatsappUrl=result.pdfUrl && /^[0-9]{11,15}$/.test(whatsapp)
+    // WhatsApp cannot read our protected internal PDF URL. Never paste it into chat.
+    const whatsappUrl=/^[0-9]{11,15}$/.test(whatsapp)
       ? "https://wa.me/"+whatsapp+"?text="+encodeURIComponent(
-        "Hello, your Nitya Academy application "+result.number+" is ready. Download your PDF: "+result.pdfUrl)
+        "Nitya Academy: Application "+result.number+" generated. I am sharing your PDF separately.")
       : "";
     return <section className="rounded-2xl bg-white border p-6 md:p-8 space-y-4">
       <h2 className="text-2xl font-bold text-green-700">Application saved</h2>
       <p>Application / Registration No: <strong>{result.number}</strong></p>
-      <p className="text-sm text-amber-800">
-        PDF: {result.pdfUrl ? "Ready" : "Pending generation"} · Google Sheet: {result.sheetSyncStatus || "Pending sync"}
-      </p>
+      <p className="text-sm text-amber-800">PDF: {result.pdfUrl?"Ready":"Pending generation"} · Google Sheet: {result.sheetSyncStatus||"Pending sync"}</p>
       {result.pdfUrl ? <>
-        <a href={result.pdfUrl} target="_blank" rel="noopener noreferrer" className="inline-block pill-btn-primary">Download PDF</a>
+        <div className="flex flex-wrap gap-3">
+          <a href={result.pdfUrl} className="inline-flex items-center pill-btn-primary">Download PDF</a>
+          <button type="button" onClick={()=>void shareDocument()} className="pill-btn-outline">Share PDF from Mobile</button>
+        </div>
         <label className="block text-sm font-medium max-w-xs">Student WhatsApp Number
           <input type="tel" inputMode="numeric" maxLength={15} value={shareNumber}
             onChange={e=>setShareNumber(e.target.value.replace(/\D/g,""))}
             className="mt-1 block w-full rounded-lg border border-slate-300 p-3"/>
         </label>
         {whatsappUrl
-          ? <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-block pill-btn-outline">Open WhatsApp with PDF Link</a>
-          : <p className="text-sm text-amber-700">Enter a valid WhatsApp number to open chat.</p>}
-        <p className="text-xs text-slate-500">WhatsApp opens with a draft. Tap Send yourself. Automatic sending requires WhatsApp Business API approval and recipient consent.</p>
-      </> : <p className="text-sm text-slate-600">PDF download and WhatsApp sharing become available only after secure PDF generation is configured. No PDF has been generated yet.</p>}
+          ? <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-block pill-btn-outline">Open Student WhatsApp Chat</a>
+          : <p className="text-sm text-amber-700">Enter a valid WhatsApp number.</p>}
+        <p className="text-xs text-slate-500">
+          On supported mobile devices, Share PDF lets you select WhatsApp and send the actual PDF file.
+          On desktop, download the PDF, open the student's WhatsApp chat and attach the file manually.
+          ChatGPT does not send WhatsApp messages automatically.
+        </p>
+      </> : <p className="text-sm text-slate-600">PDF generation is pending. Ask Admin to retry before giving documents to the student.</p>}
+      {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
     </section>;
   }
   return <form onSubmit={submit} className="rounded-2xl bg-white border p-5 md:p-8 space-y-6">
@@ -208,11 +230,11 @@ function Form({ kind, staff, config, onDone }: { kind: Kind; staff: Staff; confi
     </>}
     <section className="space-y-2">
       <h3 className="text-lg font-semibold">Student Photo</h3>
-      <input type="file" accept="image/jpeg,image/png,image/webp" name="photo" disabled={!config.photoStorageEnabled}
+      <input type="file" accept="image/jpeg,image/png" name="photo" disabled={!config.photoStorageEnabled}
         className="block w-full rounded-lg border border-slate-200 bg-slate-100 p-3 disabled:cursor-not-allowed"
         onChange={e=>setSelectedPhoto(e.target.files?.[0]||null)}/>
       <p className="text-sm text-amber-800">
-        {config.photoStorageEnabled?"Student photo required; maximum 5 MB.":"Photo uploads are unavailable until private Cloudflare R2 storage is enabled."}
+        {config.photoStorageEnabled?"Student photo required; maximum 2.5 MB (JPG or PNG).":"Photo uploads are unavailable until private Cloudflare R2 storage is enabled."}
       </p>
     </section>
     {terms&&<p className="text-sm text-slate-600 whitespace-pre-wrap p-4 bg-slate-50 rounded-xl">{terms}</p>}
