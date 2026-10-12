@@ -173,6 +173,51 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
       });
     }
   }
+  if(pathname==="/api/admin/staff/pdf-smoke-test" && post){
+    if(!isAdmin)return json({error:"Admin required"},403);
+    // Only temporary preview checks; never exercise PDF testing in production.
+    if(env.STAFF_SUBMISSIONS_ENABLED!=="false")return json({
+      success:false,code:"STAGING_ONLY",
+      message:"PDF smoke tests are only allowed in isolated Preview with submissions disabled."
+    },403);
+    if(!driveReady(env))return json({
+      success:false,code:"MISSING_CONFIG",message:"Google Drive Bridge is unavailable."
+    });
+    const logo=await env.DB.prepare(
+      "SELECT extra_logo_drive_id,extra_logo_active FROM staff_courses WHERE course_id='ecce'"
+    ).first<{extra_logo_drive_id:string|null;extra_logo_active:number}>();
+    if(!logo?.extra_logo_drive_id || logo.extra_logo_active!==1)return json({
+      success:false,code:"LOGO_REQUIRED",message:"Activate the ECCE extra logo before PDF test."
+    });
+    try{
+      const result=await driveRequest(env,{action:"verifyPdf",courseLogoFileId:logo.extra_logo_drive_id});
+      const tests=Array.isArray(result.tests)?result.tests:[];
+      if(result.code!=="PDF_GENERATION_OK" || tests.length!==2 || !tests.every(
+         (t:any)=>t&&t.validPdf===true&&Number(t.bytes)>500
+      ))return json({
+        success:false,code:"INCOMPLETE_PDF_TEST",
+        message:"Apps Script did not confirm both Admission and Scholarship test PDFs."
+      });
+      return json({
+        success:true,code:"PDF_GENERATION_OK",
+        tests:tests.map((t:any)=>({type:t.type,bytes:Number(t.bytes)})),
+        message:"Both synthetic PDFs generated. Temporary test PDF files were sent to Trash. No student data was submitted."
+      });
+    }catch(e){
+      const reason=e instanceof Error?e.message:"";
+      console.error("Staff Portal synthetic PDF verification failed",reason);
+      let code="PDF_TEST_FAILED";
+      let message="Could not generate test PDFs. Check Apps Script Executions for the exact reason.";
+      if(/unsupported operation/i.test(reason)){
+        code="SCRIPT_UPDATE_REQUIRED";message="Deploy the updated Apps Script as a new version of the existing Web App.";
+      }else if(/permission|authorization|scope|not authorized/i.test(reason)){
+        code="DOCUMENTS_PERMISSION";message="Authorize Google Docs and Drive permissions in the Apps Script Editor.";
+      }else if(/not found|does not exist|logo|folder/i.test(reason)){
+        code="PDF_ASSET_ERROR";message="Academy logo, ECCE logo, or a private PDF folder cannot be accessed.";
+      }
+      return json({success:false,code,message});
+    }
+  }
   if(pathname==="/api/admin/staff/course-logo" && ["POST","GET","DELETE"].includes(request.method)) {
     if(!isAdmin) return json({error:"Admin required"},403);
     return handleCourseLogo(request,env);
