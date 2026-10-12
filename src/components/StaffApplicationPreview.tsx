@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { AlertCircle } from "lucide-react";
+import { defaultFormEditor, type FormEditorConfig } from "../data/staffFormEditor";
 
 type Staff={id:string;name:string};
 export type PortalCourse={id:string;name:string;category:string;active:boolean;defaultFee:number|null};
 export type FormConfig={
   enquiryUrl?:string;courses?:PortalCourse[];admissionTerms?:string;scholarshipTerms?:string;
-  photoStorageEnabled?:boolean;submissionsEnabled?:boolean;
+  photoStorageEnabled?:boolean;submissionsEnabled?:boolean;formEditor?:FormEditorConfig;
 };
 export type Kind="admission"|"scholarship";
 const courseGroups=[
@@ -19,6 +20,8 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
   const error="";
   const terms=kind==="admission"?config.admissionTerms:config.scholarshipTerms;
   const courses=(config.courses||[]).filter(c=>c.active);
+  const fields=(config.formEditor||defaultFormEditor())[kind].fields;
+  const extraFields=(config.formEditor||defaultFormEditor())[kind].extras;
   const set=(name:string,value:string)=>{
     setValues(p=>{
       const next={...p,[name]:value};
@@ -30,24 +33,34 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
   const v=(key:string)=>values[key]||"";
   const field=(key:string,label:string,required=false,type="text",extras?:{
     inputMode?:"numeric"|"tel"|"decimal";maxLength?:number;placeholder?:string;
-  })=><label key={key} className="block text-sm font-medium text-slate-700">{label}{required?" *":""}
-    <input name={key} className="mt-1 block w-full rounded-lg border border-slate-300 p-3 bg-white" type={type}
-      required={required} value={v(key)} inputMode={extras?.inputMode} maxLength={extras?.maxLength}
-      placeholder={extras?.placeholder} onChange={e=>{
-        const next=(key==="aadhaar"||key==="pin"||key==="year10"||key==="year12"||key==="mobile"||key==="whatsapp")
-          ?e.target.value.replace(/\D/g,""):e.target.value;
-        set(key,next);
-      }}
-      pattern={key==="aadhaar"?"[0-9]{12}":(key==="mobile"||key==="whatsapp")?"[0-9]{10}":undefined}/>
-  </label>;
-  const select=(key:string,label:string,options:{value:string,label:string}[],required=false)=>
-    <label key={key} className="block text-sm font-medium text-slate-700">{label}{required?" *":""}
-      <select required={required} className="mt-1 block w-full rounded-lg border border-slate-300 p-3 bg-white"
+  })=>{
+    const cfg=fields[key];
+    if(cfg && !cfg.visible)return null;
+    const displayLabel=cfg?.label||label;
+    const mustFill=cfg?.required??required;
+    return <label key={key} className="block text-sm font-medium text-slate-700">{displayLabel}{mustFill?" *":""}
+      <input name={key} className="mt-1 block w-full rounded-lg border border-slate-300 p-3 bg-white" type={type}
+        required={mustFill} value={v(key)} inputMode={extras?.inputMode} maxLength={extras?.maxLength}
+        placeholder={extras?.placeholder} onChange={e=>{
+          const next=(key==="aadhaar"||key==="pin"||key==="year10"||key==="year12"||key==="mobile"||key==="whatsapp")
+            ?e.target.value.replace(/\D/g,""):e.target.value;
+          set(key,next);
+        }}
+        pattern={key==="aadhaar"?"[0-9]{12}":(key==="mobile"||key==="whatsapp")?"[0-9]{10}":undefined}/>
+    </label>;
+  };
+  const select=(key:string,label:string,options:{value:string,label:string}[],required=false)=>{
+    const cfg=fields[key];
+    if(cfg && !cfg.visible)return null;
+    const displayLabel=cfg?.label||label;
+    return <label key={key} className="block text-sm font-medium text-slate-700">{displayLabel}{(cfg?.required??required)?" *":""}
+      <select required={cfg?.required??required} className="mt-1 block w-full rounded-lg border border-slate-300 p-3 bg-white"
         value={v(key)} onChange={e=>set(key,e.target.value)}>
-        <option value="">Select {label}</option>
+        <option value="">Select {displayLabel}</option>
         {options.map(o=><option value={o.value} key={o.value}>{o.label}</option>)}
       </select>
     </label>;
+  };
   const yesNo=[{value:"yes",label:"Yes"},{value:"no",label:"No"}];
   // Preview never performs a request, even if runtime settings change.
   return <form onSubmit={event=>event.preventDefault()} className="rounded-2xl bg-white border p-5 md:p-8 space-y-6">
@@ -108,7 +121,7 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
       <section className="space-y-3">
         <h3 className="text-lg font-semibold">Course and Fees</h3>
         <div className="grid sm:grid-cols-2 gap-4">
-          <label className="block text-sm font-medium text-slate-700">Select Course *
+          <label className="block text-sm font-medium text-slate-700">{fields.course?.label||"Select Course"} *
             <select required value={v("course")} onChange={e=>set("course",e.target.value)}
               className="mt-1 block w-full rounded-lg border border-slate-300 p-3 bg-white">
               <option value="">Select course</option>
@@ -149,6 +162,20 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
         </div>
       </section>
     </>}
+    {extraFields.length>0&&<section className="space-y-3">
+      <h3 className="text-lg font-semibold">Additional Details</h3>
+      <div className="grid sm:grid-cols-2 gap-4">
+        {extraFields.map(extra=><label key={extra.id} className="block text-sm font-medium text-slate-700">
+          {extra.label}{extra.required?" *":""}
+          {extra.type==="select"?<select required={extra.required} value={v(extra.id)}
+            onChange={e=>set(extra.id,e.target.value)} className="block mt-1 border rounded-lg p-3 bg-white w-full">
+            <option value="">Select {extra.label}</option>
+            {extra.options.map(opt=><option key={opt} value={opt}>{opt}</option>)}
+          </select>:<input type={extra.type} required={extra.required} value={v(extra.id)}
+            onChange={e=>set(extra.id,e.target.value)} className="block mt-1 border rounded-lg p-3 bg-white w-full"/>}
+        </label>)}
+      </div>
+    </section>}
     <section className="space-y-2">
       <h3 className="text-lg font-semibold">Student Photo</h3>
       <input type="file" accept="image/jpeg,image/png" name="photo" disabled={true}
