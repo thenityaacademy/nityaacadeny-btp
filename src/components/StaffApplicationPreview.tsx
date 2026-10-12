@@ -85,12 +85,21 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
   const [submitting,setSubmitting]=useState(false);
   const [submitError,setSubmitError]=useState("");
   const [receipt,setReceipt]=useState<Receipt|null>(null);
+  const [recipientNumber,setRecipientNumber]=useState("");
   const whatsappMessage=receipt
-    ?"नमस्कार! Nitya Academy, Bharatpur में आपका "+(kind==="admission"?"Admission":"ECCE Scholarship Registration")+
-       " रिकॉर्ड दर्ज हुआ है।\nStudent: "+receipt.studentName+"\n"+
-       (kind==="admission"?"Application No.: ":"Registration No.: ")+receipt.number+
-       "\nकृपया अपने रिकॉर्ड और PDF की जानकारी के लिए Nitya Academy से संपर्क करें।\n"+
-       "Future yahin se shuru hota hai...\nContact: 9680008384 | 9802813444"
+    ? "Dear "+receipt.studentName+",\n\n"+
+      "Your "+(receipt.kind==="admission"?"admission application":"ECCE Scholarship registration")+
+      " form has been successfully recorded with *Nitya Academy, Bharatpur*.\n\n"+
+      "*Student Name:* "+receipt.studentName+"\n"+
+      (receipt.kind==="admission"?"*Application Number:* ":"*Registration Number:* ")+receipt.number+"\n"+
+      (receipt.kind==="admission"?"*Course:* "+(values.courseName||config.courses?.find(c=>c.id===values.course)?.name||"Selected Course")+"\n":"")+
+      "*Status:* Form submitted\n\n"+
+      "Please keep your form number and PDF safely for future reference. "+
+      "This acknowledgement does not confirm final admission, scholarship selection or payment.\n\n"+
+      "*NITYA ACADEMY, BHARATPUR*\n"+
+      "Near Ketan Gate, Sahyog Nagar, Bharatpur 321001\n"+
+      "Contact: +91 9680008384 | +91 9802813444\n"+
+      "Future yahin se shuru hota hai..."
     :"";
   const submissionAction=async(retry=false)=>{
     if(submitting||!config.submissionsEnabled)return;
@@ -116,8 +125,12 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
   const downloadPdf=()=>{if(receipt?.pdfUrl)window.open(receipt.pdfUrl,"_blank","noopener,noreferrer");};
   const shareWhatsApp=async()=>{
     if(!receipt)return;
-    const recipient=(values.whatsapp||values.mobile||receipt.mobile||"").replace(/\D/g,"");
-    const url="https://wa.me/"+(recipient.length===10?"91"+recipient:"")+"?text="+encodeURIComponent(whatsappMessage);
+    const recipient=(recipientNumber||values.whatsapp||values.mobile||receipt.mobile||"").replace(/\D/g,"");
+    if(recipient.length!==10||!/^[6-9]/.test(recipient)){
+      setSubmitError("Please enter a valid 10-digit Indian WhatsApp number.");
+      return;
+    }
+    const url="https://wa.me/91"+recipient+"?text="+encodeURIComponent(whatsappMessage);
     if(receipt.pdfReady&&receipt.pdfUrl&&navigator.share){
       try{
         const response=await fetch(receipt.pdfUrl,{credentials:"include",cache:"no-store"});
@@ -360,6 +373,12 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
       <p className="text-sm">PDF: <strong>{receipt.pdfReady?"Ready":"Processing — Retry Required"}</strong></p>
       <p className="text-sm">Google Sheet: <strong>{receipt.sheetStatus==="synced"?"Synced":"Pending — Retry Required"}</strong></p>
       {receipt.notice&&<p className="text-sm text-amber-900">{receipt.notice}</p>}
+      <label className="block text-sm">WhatsApp recipient (10-digit mobile; optional override)
+        <input type="tel" inputMode="numeric" pattern="[6-9][0-9]{9}" maxLength={10}
+          value={recipientNumber} onChange={e=>setRecipientNumber(e.target.value.replace(/\D/g,"").slice(0,10))}
+          placeholder={values.whatsapp||values.mobile||receipt.mobile}
+          className="mt-1 block rounded-lg border bg-white px-3 py-2 w-full sm:max-w-xs"/>
+      </label>
       <div className="flex flex-wrap gap-2">
         {receipt.pdfReady&&receipt.pdfUrl&&<button type="button" onClick={downloadPdf}
           className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2">
@@ -367,7 +386,7 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
         </button>}
         {receipt.pdfReady&&<button type="button" onClick={()=>void shareWhatsApp()}
           className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2">
-          <MessageCircle size={16}/> Share PDF / Message on WhatsApp
+          <MessageCircle size={16}/> Share English Message + PDF
         </button>}
         {(!receipt.pdfReady||receipt.sheetStatus!=="synced")&&<button type="button"
           disabled={submitting} onClick={()=>void submissionAction(true)}

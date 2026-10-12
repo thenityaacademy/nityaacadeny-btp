@@ -211,7 +211,12 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
     const seq=await env.DB.prepare(
       "SELECT prefix,next_number,end_number FROM registration_sequences WHERE sequence_key='scholarship'"
     ).first<{prefix:string;next_number:number;end_number:number}>();
+    const adm=await env.DB.prepare(
+      "SELECT prefix,next_number,end_number FROM registration_sequences WHERE sequence_key='admission'"
+    ).first<{prefix:string;next_number:number;end_number:number}>();
     return out({bridgeConfigured:driveReady(env),photoEnabled:photoEnabled(env),
+      admissionSeriesConfigured:!!adm&&adm.next_number<=adm.end_number,
+      admissionSeries:adm?{prefix:adm.prefix,nextNumber:adm.next_number,lastNumber:adm.end_number}:null,
       submissionsEnabled:env.STAFF_SUBMISSIONS_ENABLED==="true",
       scholarshipSeriesConfigured:!!seq&&seq.next_number<=seq.end_number,
       scholarshipSeries:seq?{prefix:seq.prefix,nextNumber:seq.next_number,lastNumber:seq.end_number}:null,
@@ -416,41 +421,45 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
     return out({success:true});
   }
   if(path==="/api/admin/staff/registration-series"&&request.method==="GET"){
-    const series=await env.DB.prepare(
+    const rows=await env.DB.prepare(
       "SELECT sequence_key,prefix,next_number,end_number FROM registration_sequences "+
-      "WHERE sequence_key='scholarship'"
-    ).first();
-    return out({series:series||null});
+      "WHERE sequence_key IN ('scholarship','admission')"
+    ).all<{sequence_key:string;prefix:string;next_number:number;end_number:number}>();
+    return out({
+      series:rows.results.find(x=>x.sequence_key==="scholarship")||null,
+      admissionSeries:rows.results.find(x=>x.sequence_key==="admission")||null
+    });
   }
   if(path==="/api/admin/staff/registration-series"&&post){
     const data=await parseJson(request);
-    if(!data)return out({error:"Invalid scholarship numbering request"},400);
+    if(!data)return out({error:"Invalid registration numbering request"},400);
+    const kind=data.kind===undefined?"scholarship":data.kind;
+    if(kind!=="scholarship"&&kind!=="admission")return out({error:"Unknown registration series"},400);
     const prefix=data.prefix,start=data.start,end=data.end;
-    if(typeof prefix!=="string"||! /^[A-Za-z0-9-]{0,20}$/.test(prefix)||
-       (typeof start!=="number")||(typeof end!=="number")||!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||
-       Number(start)<1||Number(end)<Number(start)||Number(end)>999999999)
+    if(typeof prefix!=="string"||! /^[A-Za-z0-9-]{1,20}$/.test(prefix)||
+       typeof start!=="number"||typeof end!=="number"||!Number.isSafeInteger(start)||
+       !Number.isSafeInteger(end)||start<1||end<start||end>999999999)
       return out({error:"Enter a valid prefix and registration number range"},400);
     const existing=await env.DB.prepare(
-      "SELECT prefix,next_number,end_number FROM registration_sequences "+
-      "WHERE sequence_key='scholarship'"
-    ).first<{prefix:string;next_number:number;end_number:number}>();
+      "SELECT prefix,next_number,end_number FROM registration_sequences WHERE sequence_key=?"
+    ).bind(kind).first<{prefix:string;next_number:number;end_number:number}>();
     if(existing){
-      // Issued numbers never reset or repeat. Only lengthen the existing range.
       if(prefix!==existing.prefix||start!==existing.next_number||end<existing.end_number)
-        return out({error:"Existing sequence cannot be renumbered. Only increase Last Number; keep current Prefix and Next Number."},409);
-      await env.DB.prepare("UPDATE registration_sequences SET end_number=? WHERE sequence_key='scholarship' AND end_number<=?")
-        .bind(end,end).run();
+        return out({error:"Issued numbers cannot change. Keep current Prefix and Next Number; only Last Number may increase."},409);
+      await env.DB.prepare(
+        "UPDATE registration_sequences SET end_number=? WHERE sequence_key=? AND end_number<=?"
+      ).bind(end,kind,end).run();
       return out({success:true,extended:true});
     }
     try{
       await env.DB.prepare(
-        "INSERT INTO registration_sequences(sequence_key,prefix,next_number,end_number) VALUES ('scholarship',?,?,?)"
-      ).bind(prefix,start,end).run();
+        "INSERT INTO registration_sequences(sequence_key,prefix,next_number,end_number) VALUES (?,?,?,?)"
+      ).bind(kind,prefix,start,end).run();
       return out({success:true,created:true});
     }catch(e){
-      if(/UNIQUE|constraint/i.test(String(e)))return out({error:"Sequence changed; refresh and retry"},409);
-      console.error("Registration sequence creation failed",e);
-      return out({error:"Could not configure scholarship registration range"},503);
+      if(/UNIQUE|constraint/i.test(String(e)))return out({error:"Series changed. Refresh and retry."},409);
+      console.error("Registration range creation failed",kind);
+      return out({error:"Could not configure registration range"},503);
     }
   }
   // No release of scholarship settings or any other administrative write.
