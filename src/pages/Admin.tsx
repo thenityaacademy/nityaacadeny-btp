@@ -5,10 +5,14 @@ import { getStore, setStore } from "../data/store";
 import StaffPhaseOneAdmin from "../components/StaffPhaseOneAdmin";
 import StaffManagementAdmin from "../components/StaffManagementAdmin";
 import StaffPortalSetupAdmin from "../components/StaffPortalSetupAdmin";
+import StaffCourseLogosAdmin from "../components/StaffCourseLogosAdmin";
+import StaffFormsEditorAdmin from "../components/StaffFormsEditorAdmin";
 
 const SECTIONS = [
   { id: "staff", label: "Staff Management", icon: Lock },
   { id: "staff-settings", label: "Staff Portal Settings", icon: Settings },
+  { id: "staff-logo", label: "Course PDF Logo Upload", icon: Image },
+  { id: "staff-form-builder", label: "Admission / Scholarship Form Edit", icon: FileText },
   { id: "offers", label: "Offer Images", icon: Image },
   { id: "instagram", label: "Instagram Images", icon: Image },
   { id: "courses", label: "Courses", icon: BookOpen },
@@ -270,6 +274,8 @@ if (checkingSession) {
 
             {activeSection === "staff" && <StaffManagementAdmin />}
             {activeSection === "staff-settings" && <StaffPortalSetupAdmin />}
+            {activeSection === "staff-logo" && <StaffCourseLogosAdmin />}
+            {activeSection === "staff-form-builder" && <StaffFormsEditorAdmin />}
             {activeSection === "offers" && <OfferImagesAdmin store={store} onSave={handleSave} />}
             {activeSection === "instagram" && <InstagramImagesAdmin store={store} onSave={handleSave} />}
             {activeSection === "courses" && <CoursesAdmin store={store} onSave={handleSave} />}
