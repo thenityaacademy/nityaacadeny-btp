@@ -130,7 +130,7 @@ async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
   const doc=await driveRequest(env,{
    action:"finalizeStudentDocuments",type:row.kind,recordId:row.id,formNumber:row.form_number,
    createdAt:row.created_at,photoId:row.photo_draft_id,photoFileId:draft.drive_file_id,
-   photoMime:draft.mime,fields,staffId:staff.id,staffName:staff.name,
+   photoMime:draft.mime,fields:{...fields,course:fields.courseName||fields.course},staffId:staff.id,staffName:staff.name,
    terms:terms?.setting_value||"",
    courseLogoFileId:logo?.extra_logo_active===1?logo.extra_logo_drive_id:null
   });
@@ -150,7 +150,7 @@ async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
    const sheet=await driveRequest(env,{
     action:"upsert",recordId:row.id,type:row.kind,formNumber:row.form_number,
     createdAt:row.created_at,studentName:row.student_name,mobile:row.mobile,
-    staffId:staff.id,staffName:staff.name,fields:{...fields,termsAccepted:"Yes"},
+    staffId:staff.id,staffName:staff.name,fields:{...fields,course:fields.courseName||fields.course,termsAccepted:"Yes"},
     photoFileId,pdfFileId
    });
    if(sheet.success!==true)throw Error("Spreadsheet did not confirm entry");
