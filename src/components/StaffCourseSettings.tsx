@@ -20,6 +20,20 @@ export default function StaffCourseSettings(){
   const [bridgeError,setBridgeError]=useState("");
   const [bridgeProbe,setBridgeProbe]=useState<{connected:boolean;code:string;message:string}|null>(null);
   const [driveTest,setDriveTest]=useState<{success:boolean;code:string;message:string}|null>(null);
+  const [pdfTest,setPdfTest]=useState<{success:boolean;code:string;message:string;tests?:{type:string;bytes:number}[]}|null>(null);
+  const [testingPdf,setTestingPdf]=useState(false);
+  const testPdf=async()=>{
+    setTestingPdf(true);setPdfTest(null);
+    try{
+      const result=await call("/api/admin/staff/pdf-smoke-test",{method:"POST"});
+      setPdfTest(result);
+    }catch(e){
+      setPdfTest({
+        success:false,code:"REQUEST_FAILED",
+        message:e instanceof Error?e.message:"Unable to verify test PDFs"
+      });
+    }finally{setTestingPdf(false);}
+  };
   const [testingDrive,setTestingDrive]=useState(false);
   const testDrive=async()=>{
     setTestingDrive(true);setDriveTest(null);
@@ -127,6 +141,9 @@ export default function StaffCourseSettings(){
         {driveTest && <span className={"block text-xs mt-2 "+(driveTest.success?"text-green-700 font-semibold":"text-red-700")}>
           Google Drive read/write test: {driveTest.code} — {driveTest.message}
         </span>}
+        {pdfTest && <span className={"block text-xs mt-2 "+(pdfTest.success?"text-green-700 font-semibold":"text-red-700")}>
+          PDF generation test: {pdfTest.code} — {pdfTest.message}
+        </span>}
         {bridgeError && <span className="block text-red-700 text-xs mt-1">{bridgeError}</span>}
         {bridgeCheckedAt && <span className="block text-slate-500 text-xs mt-1">Last checked: {bridgeCheckedAt}</span>}
       </div>
@@ -138,7 +155,11 @@ export default function StaffCourseSettings(){
           className="border border-blue-600 text-blue-700 rounded-lg px-3 py-2 text-xs disabled:opacity-50">
           {testingDrive?"Testing Drive...":"Test Drive Read & Write"}
         </button>
-        <span className="text-xs text-slate-500 max-w-48">Test creates and trashes one tiny private marker file.</span>
+        <button type="button" disabled={testingPdf || !bridgeProbe?.connected} onClick={()=>void testPdf()}
+          className="border border-blue-600 text-blue-700 rounded-lg px-3 py-2 text-xs disabled:opacity-50">
+          {testingPdf?"Generating test PDFs...":"Test Admission & Scholarship PDFs"}
+        </button>
+        <span className="text-xs text-slate-500 max-w-48">Drive check: creates and trashes a tiny file. PDF test: generates and trashes sample documents; no student records.</span>
       </div>
     </div>
     {error&&<p className="text-red-700 text-sm border border-red-200 bg-red-50 rounded-lg p-3" role="alert">{error}</p>}
