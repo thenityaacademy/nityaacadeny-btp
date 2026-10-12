@@ -1,5 +1,6 @@
 import { handlePhaseTwo } from "./staff-portal/phase2-auth";
 import { cleanupExpiredStaffPhotos, photoEnabled } from "./staff-portal/worker-photo";
+import { driveRequest } from "./staff-portal/worker-drive";
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
@@ -1013,9 +1014,15 @@ if (
   // It never touches the existing public Admission/Enquiry data.
   async scheduled(_controller:ScheduledController, env:Env, context:ExecutionContext){
     if(!photoEnabled(env))return;
-    context.waitUntil(cleanupExpiredStaffPhotos(env,20).then(
-      result=>console.log("Private expired photo draft cleanup",result),
-      err=>console.error("Private photo cleanup failed",err)
-    ));
+    context.waitUntil((async()=>{
+      // Clean orphaned Drive images first, then remove expired D1 references.
+      // Both operations affect only UUID-labeled private draft photos.
+      try{
+        const drive=await driveRequest(env,{action:"cleanupStudentPhotoDrafts"});
+        console.log("Private student photo Drive cleanup",{removed:drive.removed,scanned:drive.scanned});
+      }catch(e){console.error("Remote private draft cleanup failed",String(e).slice(0,120));}
+      const local=await cleanupExpiredStaffPhotos(env,20);
+      console.log("Private expired photo D1 cleanup",local);
+    })().catch(e=>console.error("Private photo cleanup failed",e)));
   }
 };
