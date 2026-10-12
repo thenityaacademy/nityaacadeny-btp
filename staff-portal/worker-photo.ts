@@ -26,7 +26,11 @@ function validImage(bytes:Uint8Array,mime:string){
   if(bytes.length<45||!signature.every((v,i)=>bytes[i]===v))return false;
   if(String.fromCharCode(...bytes.subarray(12,16))!=="IHDR")return false;
   const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
-  return validSize(view.getUint32(16),view.getUint32(20));
+  const validEnd=bytes.length>=57 &&
+   bytes[bytes.length-12]===0 && bytes[bytes.length-11]===0 &&
+   bytes[bytes.length-10]===0 && bytes[bytes.length-9]===0 &&
+   String.fromCharCode(...bytes.subarray(bytes.length-8,bytes.length-4))==="IEND";
+  return validEnd && validSize(view.getUint32(16),view.getUint32(20));
  }
  if(mime!=="image/jpeg"||bytes.length<100||bytes[0]!==255||bytes[1]!==216||
     bytes[bytes.length-2]!==255||bytes[bytes.length-1]!==217)return false;
@@ -119,16 +123,18 @@ export async function handleStaffPhoto(request:Request,env:PhotoEnv,staff:Staff)
    if(!validImage(bytes,photo.type))throw new PhotoError("Photo file is invalid or dimensions are unsupported.",415);
    const now=new Date(),expiresAt=new Date(now.getTime()+DRAFT_LIFETIME).toISOString();
    // Shared D1 quota for active drafts; no student names or Aadhaar stored here.
-   const active=await env.DB.prepare(
-    "SELECT COUNT(*) AS total FROM staff_photo_drafts WHERE staff_id=? AND expires_at>? AND status='ready'"
-   ).bind(staff.id,now.toISOString()).first<{total:number}>();
-   if(Number(active?.total||0)>=MAX_DRAFTS_PER_STAFF)
-    throw new PhotoError("Maximum 4 active photo drafts. Remove an old draft before uploading.",429);
    const id=crypto.randomUUID();
-   // Preallocate a draft to own the eventual Drive photo reference.
-   await env.DB.prepare(
-    "INSERT INTO staff_photo_drafts(id,staff_id,kind,mime,size_bytes,status,expires_at) VALUES (?,?,?,?,?,'uploading',?)"
-   ).bind(id,staff.id,kind,photo.type,photo.size,expiresAt).run();
+   // Atomic insert+quota enforcement in D1; concurrent requests cannot bypass
+   // the private draft allowance. Already-expired drafts don't count.
+   const inserted=await env.DB.prepare(
+    "INSERT INTO staff_photo_drafts(id,staff_id,kind,mime,size_bytes,status,expires_at) "+
+    "SELECT ?,?,?,?,?,'uploading',? WHERE "+
+    "(SELECT COUNT(*) FROM staff_photo_drafts WHERE staff_id=? AND expires_at>?)<? "+
+    "RETURNING id"
+   ).bind(id,staff.id,kind,photo.type,photo.size,expiresAt,
+     staff.id,now.toISOString(),MAX_DRAFTS_PER_STAFF).first<{id:string}>();
+   if(!inserted)
+    throw new PhotoError("Maximum 4 active photo drafts. Remove an old draft before uploading.",429);
    let fileId="";
    try{
     const response=await driveRequest(env,{action:"uploadStudentPhoto",type:kind,
