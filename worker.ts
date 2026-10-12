@@ -1,9 +1,13 @@
 import { handlePhaseTwo } from "./staff-portal/phase2-auth";
+import { cleanupExpiredStaffPhotos, photoEnabled } from "./staff-portal/worker-photo";
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
   ADMIN_PASSWORD: string;
   SHEET_API_SECRET: string;
+  STAFF_SHEETS_URL?:string;
+  STAFF_SHEETS_SECRET?:string;
+  STAFF_PHOTO_UPLOADS_ENABLED?:string;
 }
 
 const ADMIN_USERNAME = "thenityaacademy@gmail.com";
@@ -1005,4 +1009,13 @@ if (
       request
     );
   },
+  // Nightly cleanup is disabled until explicit Photo Storage activation.
+  // It never touches the existing public Admission/Enquiry data.
+  async scheduled(_controller:ScheduledController, env:Env, context:ExecutionContext){
+    if(!photoEnabled(env))return;
+    context.waitUntil(cleanupExpiredStaffPhotos(env,20).then(
+      result=>console.log("Private expired photo draft cleanup",result),
+      err=>console.error("Private photo cleanup failed",err)
+    ));
+  }
 };
