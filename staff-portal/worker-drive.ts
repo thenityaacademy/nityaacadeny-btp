@@ -62,7 +62,7 @@ export async function probeDriveBridge(env:DriveBridgeEnv):Promise<{
   response=await fetch(url.toString(),{
    method:"POST",
    headers:{"Content-Type":"text/plain;charset=utf-8"},
-   body:JSON.stringify({action:"getCourseLogo",fileId:"probe-invalid-id",secret:env.STAFF_SHEETS_SECRET}),
+   body:JSON.stringify({action:"getCourseLogo",fileId:"bad",secret:env.STAFF_SHEETS_SECRET}),
    redirect:"follow",
    signal:AbortSignal.timeout(12000)
   });
