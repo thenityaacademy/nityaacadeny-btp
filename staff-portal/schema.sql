@@ -1,5 +1,6 @@
 -- Nitya Academy Staff Portal: Cloudflare D1 foundation
--- Execute against a dedicated D1 database after backend route implementation.
+-- New database foundation. Existing databases with Drive columns must NOT rerun ALTER TABLE migration.
+-- Preview D1 uses a separate database; NEVER copy live Staff, Aadhaar, application or session rows.
 CREATE TABLE IF NOT EXISTS staff (
   id TEXT PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
@@ -25,7 +26,8 @@ CREATE TABLE IF NOT EXISTS staff_courses (
   course_name TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 1,
   default_fee INTEGER,
-  extra_logo_r2_key TEXT,
+  extra_logo_r2_key TEXT, -- legacy compatibility only; new logos use Drive
+  extra_logo_drive_id TEXT,
   extra_logo_active INTEGER NOT NULL DEFAULT 0,
   CHECK (extra_logo_active IN (0,1))
 );
@@ -47,6 +49,8 @@ CREATE TABLE IF NOT EXISTS student_applications (
   fields_json TEXT NOT NULL,
   photo_r2_key TEXT,
   pdf_r2_key TEXT,
+  photo_drive_id TEXT,
+  pdf_drive_id TEXT,
   payment_mode TEXT,
   fee_amount INTEGER,
   sheet_sync_status TEXT NOT NULL DEFAULT 'pending',
