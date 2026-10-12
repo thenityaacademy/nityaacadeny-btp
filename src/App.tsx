@@ -17,6 +17,7 @@ import StudyMaterial from "./pages/StudyMaterial";
 import News from "./pages/News";
 import Contact from "./pages/ContactUpdated";
 import Admin from "./pages/Admin";
+import StaffLogin from "./pages/StaffLogin";
 import NotFound from "./pages/NotFound";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -133,6 +134,7 @@ export default function App() {
           }
         />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/staff" element={<StaffLogin />} />
         <Route
   path="*"
   element={
