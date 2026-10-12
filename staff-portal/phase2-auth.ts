@@ -308,7 +308,7 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
     if(!data)return out({error:"Invalid scholarship numbering request"},400);
     const prefix=data.prefix,start=data.start,end=data.end;
     if(typeof prefix!=="string"||! /^[A-Za-z0-9-]{0,20}$/.test(prefix)||
-       !Number.isSafeInteger(start)||!Number.isSafeInteger(end)||
+       (typeof start!=="number")||(typeof end!=="number")||!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||
        Number(start)<1||Number(end)<Number(start)||Number(end)>999999999)
       return out({error:"Enter a valid prefix and registration number range"},400);
     const existing=await env.DB.prepare(
