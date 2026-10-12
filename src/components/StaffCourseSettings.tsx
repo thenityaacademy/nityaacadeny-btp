@@ -19,6 +19,18 @@ export default function StaffCourseSettings(){
   const [bridge,setBridge]=useState<{configured:boolean;urlConfigured:boolean;secretConfigured:boolean}|null>(null);
   const [bridgeError,setBridgeError]=useState("");
   const [bridgeProbe,setBridgeProbe]=useState<{connected:boolean;code:string;message:string}|null>(null);
+  const [driveTest,setDriveTest]=useState<{success:boolean;code:string;message:string}|null>(null);
+  const [testingDrive,setTestingDrive]=useState(false);
+  const testDrive=async()=>{
+    setTestingDrive(true);setDriveTest(null);
+    try {
+      const result=await call("/api/admin/staff/bridge-drive-test",{method:"POST"});
+      setDriveTest(result);
+    }catch(e){
+      setDriveTest({success:false,code:"TEST_FAILED",
+        message:e instanceof Error?e.message:"Could not run Google Drive write test"});
+    }finally {setTestingDrive(false);}
+  };
   const [checkingBridge,setCheckingBridge]=useState(false);
   const [bridgeCheckedAt,setBridgeCheckedAt]=useState("");
   const checkBridge=async()=>{
@@ -101,7 +113,7 @@ export default function StaffCourseSettings(){
     <div className="rounded-xl border p-3 text-sm flex flex-wrap gap-3 items-center justify-between">
       <div>
         <strong>Google Drive Connection:</strong>{" "}
-        {!bridge?"Checking...":bridge.configured?"Configured (not yet tested)":"Not Configured"}
+        {driveTest?.success?"Verified (read + write)":!bridge?"Checking...":bridge.configured?"Configured (not yet tested)":"Not Configured"}
         {bridge && !bridge.configured && <span className="block text-amber-800 text-xs mt-1">
           Missing Preview binding(s): {!bridge.urlConfigured?"STAFF_SHEETS_URL ":""}{!bridge.secretConfigured?"STAFF_SHEETS_SECRET":""}.
           Cloudflare → Worker → Settings → Preview variables/secrets needs review.
@@ -112,10 +124,22 @@ export default function StaffCourseSettings(){
         {bridgeProbe && <span className={"block text-xs mt-1 "+(bridgeProbe.connected?"text-green-700":"text-red-700")}>
           Apps Script verification: {bridgeProbe.code} — {bridgeProbe.message}
         </span>}
+        {driveTest && <span className={"block text-xs mt-2 "+(driveTest.success?"text-green-700 font-semibold":"text-red-700")}>
+          Google Drive read/write test: {driveTest.code} — {driveTest.message}
+        </span>}
         {bridgeError && <span className="block text-red-700 text-xs mt-1">{bridgeError}</span>}
         {bridgeCheckedAt && <span className="block text-slate-500 text-xs mt-1">Last checked: {bridgeCheckedAt}</span>}
       </div>
-      <button type="button" disabled={checkingBridge} onClick={()=>void checkBridge()} className="border rounded-lg px-3 py-2 text-xs disabled:opacity-50">{checkingBridge?"Checking...":"Check Connection"}</button>
+      <div className="flex flex-col gap-2">
+        <button type="button" disabled={checkingBridge} onClick={()=>void checkBridge()} className="border rounded-lg px-3 py-2 text-xs disabled:opacity-50">
+          {checkingBridge?"Checking...":"Check Connection"}
+        </button>
+        <button type="button" disabled={testingDrive || !bridgeProbe?.connected} onClick={()=>void testDrive()}
+          className="border border-blue-600 text-blue-700 rounded-lg px-3 py-2 text-xs disabled:opacity-50">
+          {testingDrive?"Testing Drive...":"Test Drive Read & Write"}
+        </button>
+        <span className="text-xs text-slate-500 max-w-48">Test creates and trashes one tiny private marker file.</span>
+      </div>
     </div>
     {error&&<p className="text-red-700 text-sm border border-red-200 bg-red-50 rounded-lg p-3" role="alert">{error}</p>}
     {message&&<p className="text-green-700 text-sm" role="status">{message}</p>}
