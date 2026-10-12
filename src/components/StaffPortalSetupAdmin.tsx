@@ -33,6 +33,8 @@ const blank:Config={enquiryUrl:"",admissionTerms:"",scholarshipTerms:""};
 export default function StaffPortalSetupAdmin(){
   const [courses,setCourses]=useState<Course[]>([]);
   const [series,setSeries]=useState<Series|null>(null);
+  const [admissionSeries,setAdmissionSeries]=useState<Series|null>(null);
+  const [admissionLast,setAdmissionLast]=useState("");
   const [config,setConfig]=useState<Config>(blank);
   const [status,setStatus]=useState<PhaseStatus|null>(null);
   const [prefix,setPrefix]=useState("");
@@ -51,6 +53,8 @@ export default function StaffPortalSetupAdmin(){
       ]);
       setCourses(courseData.courses||[]);
       setSeries(seriesData.series||null);
+      setAdmissionSeries(seriesData.admissionSeries||null);
+      if(seriesData.admissionSeries)setAdmissionLast(String(seriesData.admissionSeries.end_number));
       setConfig({
         enquiryUrl:configData.enquiryUrl||"",
         admissionTerms:configData.admissionTerms||"",
@@ -89,10 +93,27 @@ export default function StaffPortalSetupAdmin(){
     try{
       const start=Number(nextNumber),end=Number(endNumber);
       if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end))throw Error("Enter whole numbers");
-      await call("/api/admin/staff/registration-series",post({prefix,start,end}));
+      await call("/api/admin/staff/registration-series",post({kind:"scholarship",prefix,start,end}));
       setNotice("Scholarship registration range saved. Issued numbers are never reused.");
       await reload();
     }catch(e){setError(e instanceof Error?e.message:"Could not save registration range");}
+    finally{setBusy("");}
+  };
+  const extendAdmission=async(e:FormEvent)=>{
+    e.preventDefault();
+    if(!admissionSeries)return;
+    setBusy("admission-series");setNotice("");setError("");
+    try{
+      const end=Number(admissionLast);
+      if(!Number.isSafeInteger(end)||end<admissionSeries.end_number)
+        throw Error("Last Admission Number may only be increased");
+      await call("/api/admin/staff/registration-series",post({
+        kind:"admission",prefix:admissionSeries.prefix,
+        start:admissionSeries.next_number,end
+      }));
+      setNotice("Admission form number range updated. Previously issued numbers are never reused.");
+      await reload();
+    }catch(e){setError(e instanceof Error?e.message:"Could not update Admission series");}
     finally{setBusy("");}
   };
   return <section className="space-y-6">
@@ -111,7 +132,7 @@ export default function StaffPortalSetupAdmin(){
       </div>
       <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm text-blue-900 flex gap-2">
         <ShieldCheck size={20} className="shrink-0"/>
-        Student form submissions, PDF generation and WhatsApp sending remain OFF. Student Photo upload remains disabled until the V3 Apps Script private-folder test and photo database migration are complete.
+        Registration ranges, Enquiry Link and editable Terms are configured below. Final submissions, PDFs and WhatsApp sharing are controlled by separate Cloudflare release switches and must pass end-to-end testing before activation.
       </div>
       {status&&<p className="text-sm mt-3 text-slate-700">
         Staff Accounts: <strong>{status.staffAccounts}</strong> · Staff Form Records: <strong>{status.staffApplications}</strong> ·
@@ -146,10 +167,37 @@ export default function StaffPortalSetupAdmin(){
         </div>:null;
       })}
     </div>
+    <form onSubmit={extendAdmission} className="rounded-2xl bg-white border p-5 md:p-6 space-y-3">
+      <h3 className="text-xl font-bold flex items-center gap-2"><ClipboardList size={21}/>Admission Form Number Series</h3>
+      <p className="text-sm text-slate-600">
+        Sequential and permanent. Issued numbers cannot be reused. Only the Last Number may be increased.
+      </p>
+      {admissionSeries?<div className="space-y-3">
+        <div className="grid sm:grid-cols-3 gap-3">
+          <label className="text-sm font-semibold">Prefix
+            <input readOnly value={admissionSeries.prefix}
+              className="mt-1 border rounded-lg p-3 w-full bg-slate-100"/>
+          </label>
+          <label className="text-sm font-semibold">Next Number
+            <input readOnly value={String(admissionSeries.next_number).padStart(4,"0")}
+              className="mt-1 border rounded-lg p-3 w-full bg-slate-100"/>
+          </label>
+          <label className="text-sm font-semibold">Last Number
+            <input type="number" min={admissionSeries.end_number} max={999999999}
+              value={admissionLast} onChange={e=>setAdmissionLast(e.target.value)}
+              className="mt-1 border rounded-lg p-3 w-full"/>
+          </label>
+        </div>
+        <p className="text-sm text-blue-800">Next form: <strong>{admissionSeries.prefix}{String(admissionSeries.next_number).padStart(4,"0")}</strong></p>
+        <button disabled={busy!==""} className="pill-btn-primary disabled:opacity-50"><Save size={16} className="mr-2"/> Save Admission Range</button>
+      </div>:<p className="text-sm text-amber-700">
+        Admission series not configured. Contact Admin. Never issue real application numbers before configuration.
+      </p>}
+    </form>
     <form onSubmit={saveSeries} className="rounded-2xl bg-white border p-5 md:p-6 space-y-4">
       <h3 className="text-xl font-bold flex items-center gap-2"><ClipboardList size={21}/> ECCE Scholarship Registration Series</h3>
       <p className="text-sm text-slate-600">
-        Set a range before scholarship registration opens. Prefix and Next Number cannot move backwards or change once saved. Only Last Number can be increased.
+        Scholarship sequence is set independently. Prefix and Next Number cannot move backwards or change after issue; only Last Number can increase.
       </p>
       <div className="grid sm:grid-cols-3 gap-3">
         <label className="text-sm font-semibold">Prefix
