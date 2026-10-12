@@ -110,7 +110,7 @@ export default function StaffPortalSetupAdmin(){
       </div>
       <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm text-blue-900 flex gap-2">
         <ShieldCheck size={20} className="shrink-0"/>
-        Admission and Scholarship submissions, PDF, WhatsApp sending, and Drive uploads remain OFF. Only Staff Login and Admin settings are enabled.
+        Student form submissions, PDF generation, and WhatsApp sending remain OFF. Private Course Extra Logo uploads can be enabled after the Production Google Drive bridge is configured.
       </div>
       {status&&<p className="text-sm mt-3 text-slate-700">
         Staff Accounts: <strong>{status.staffAccounts}</strong> · Staff Form Records: <strong>{status.staffApplications}</strong> ·

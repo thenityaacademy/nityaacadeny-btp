@@ -6,7 +6,10 @@
  * The existing site's HMAC-signed admin session supplies isAdmin.
  */
 import { listStaffCourses } from "./worker-courses";
-type Env = {DB:D1Database};
+import { defaultFormEditor, sanitizeFormEditor } from "../src/data/staffFormEditor";
+import { handleCourseLogo, setCourseLogoStatus } from "./worker-course-logos";
+import { driveReady, type DriveBridgeEnv } from "./worker-drive";
+type Env = {DB:D1Database} & DriveBridgeEnv;
 type StaffRow = {id:string;full_name:string;password_hash:string;active:number};
 const COOKIE="nitya_staff_session";
 const SESSION_MS=8*60*60*1000;
@@ -44,11 +47,14 @@ function validOrigin(request:Request){
   const origin=request.headers.get("Origin");
   return origin===new URL(request.url).origin;
 }
-async function parseJson(request:Request):Promise<Record<string,unknown>|null>{
+async function parseJson(request:Request,limit=3000):Promise<Record<string,unknown>|null>{
   if(request.headers.get("Content-Type")?.split(";")[0]!=="application/json")return null;
   const contentLength=Number(request.headers.get("Content-Length")||0);
-  if(contentLength>3000)return null;
-  const value=await request.json().catch(()=>null);
+  if(contentLength>limit)return null;
+  const raw=await request.text().catch(()=>"");
+  if(raw.length>limit || !raw.length)return null;
+  let value:unknown;
+  try{value=JSON.parse(raw);}catch{return null;}
   return value&&typeof value==="object"&&!Array.isArray(value)?value:null;
 }
 async function getStaffSession(request:Request,env:Env){
@@ -152,16 +158,23 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
   if(path==="/api/staff/config"&&request.method==="GET"){
     const staff=await getStaffSession(request,env);
     if(!staff)return out({error:"Staff login required"},401);
-    const [settings,courses]=await Promise.all([
+    const [settings,courses,editorRow]=await Promise.all([
       env.DB.prepare("SELECT setting_key,setting_value FROM portal_settings WHERE setting_key IN ('enquiryUrl','admissionTerms','scholarshipTerms')").all<{setting_key:string;setting_value:string}>(),
-      listStaffCourses(env)
+      listStaffCourses(env),
+      env.DB.prepare("SELECT setting_value FROM portal_settings WHERE setting_key='formEditor'").first<{setting_value:string}>()
     ]);
     const data=Object.fromEntries(settings.results.map(x=>[x.setting_key,x.setting_value]));
+    let formEditor=defaultFormEditor();
+    if(editorRow?.setting_value){
+      try{formEditor=sanitizeFormEditor(JSON.parse(editorRow.setting_value));}
+      catch(e){console.error("Stored form editor settings invalid; using defaults",e);}
+    }
     return out({
       enquiryUrl:data.enquiryUrl||"",
       admissionTerms:data.admissionTerms||"",
       scholarshipTerms:data.scholarshipTerms||"",
       courses:courses.filter(x=>x.active),
+      formEditor,
       photoStorageEnabled:false,
       submissionsEnabled:false,
       note:"Form preview only. Final submit, image upload, PDF and WhatsApp are not enabled."
@@ -171,6 +184,46 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
   if(path.startsWith("/api/staff/"))return out({error:"This Staff Portal feature is not yet enabled."},503);
 
   if(!isAdmin)return out({error:"Admin authentication required"},403);
+  // Admin-controlled Course Extra Logos; private Google Drive bridge only.
+  // These do NOT publish any student's data, trigger admissions, or create PDFs.
+  if(path==="/api/admin/staff/drive-ready" && request.method==="GET"){
+    return out({configured:driveReady(env),urlConfigured:!!env.STAFF_SHEETS_URL,
+      secretConfigured:!!env.STAFF_SHEETS_SECRET,
+      enabled:driveReady(env),
+      message:driveReady(env)?"Google Drive endpoint configured. Upload will verify access.":
+        "Configure STAFF_SHEETS_URL and STAFF_SHEETS_SECRET as Worker Production variables/secrets."});
+  }
+  if(path==="/api/admin/staff/course-logo" &&
+     ["GET","POST","DELETE"].includes(request.method)){
+    if(!driveReady(env))return out({error:"Google Drive is not configured for this Worker. Add STAFF_SHEETS_URL and STAFF_SHEETS_SECRET in Cloudflare Production settings."},503);
+    return handleCourseLogo(request,env);
+  }
+  if(path==="/api/admin/staff/course-logo-status"&&post){
+    return setCourseLogoStatus(request,env);
+  }
+  if(path==="/api/admin/staff/form-editor"&&request.method==="GET"){
+    const row=await env.DB.prepare(
+      "SELECT setting_value FROM portal_settings WHERE setting_key='formEditor'"
+    ).first<{setting_value:string}>();
+    let settings=defaultFormEditor();
+    if(row?.setting_value){
+      try{settings=sanitizeFormEditor(JSON.parse(row.setting_value));}
+      catch(e){console.error("Invalid saved Staff editor configuration",e);}
+    }
+    return out({formEditor:settings});
+  }
+  if(path==="/api/admin/staff/form-editor"&&post){
+    const body=await parseJson(request,32000);
+    if(!body||!body.formEditor)return out({error:"Invalid form editor request"},400);
+    let settings;
+    try{settings=sanitizeFormEditor(body.formEditor);}
+    catch(e){return out({error:e instanceof Error?e.message:"Invalid form editing settings"},400);}
+    await env.DB.prepare(
+      "INSERT INTO portal_settings(setting_key,setting_value) VALUES ('formEditor',?) "+
+      "ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value"
+    ).bind(JSON.stringify(settings)).run();
+    return out({success:true,formEditor:settings});
+  }
   if(path==="/api/admin/staff/phase2-overview"&&request.method==="GET"){
     const [accounts,applications,logos]=await Promise.all([
       env.DB.prepare("SELECT COUNT(*) AS n FROM staff").first<{n:number}>(),
