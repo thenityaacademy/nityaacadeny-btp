@@ -17,7 +17,7 @@ function photoDraftName_(photoId){
 }
 function photoDraftFolder_(type){
  if(type!=="admission"&&type!=="scholarship")throw Error("Invalid form type");
- return getFolder_(type,"photos");
+ return getFolder_(type==="admission"?"admissions":"scholarships","photos");
 }
 function photoDraftFile_(p){
  if(!shortId_(p.fileId))throw Error("Invalid photo file reference");
