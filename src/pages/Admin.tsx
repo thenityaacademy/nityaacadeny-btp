@@ -2,8 +2,11 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { LogIn, Lock, Eye, EyeOff, LayoutDashboard, Image, BookOpen, Newspaper, FileText, Settings, Save, Trash2, Plus, X, CheckCircle, AlertTriangle, Award } from "lucide-react";
 import { getStore, setStore } from "../data/store";
+import StaffPhaseOneAdmin from "../components/StaffPhaseOneAdmin";
 
 const SECTIONS = [
+  { id: "staff", label: "Staff Management", icon: Lock },
+  { id: "staff-settings", label: "Staff Portal Settings", icon: Settings },
   { id: "offers", label: "Offer Images", icon: Image },
   { id: "instagram", label: "Instagram Images", icon: Image },
   { id: "courses", label: "Courses", icon: BookOpen },
@@ -263,6 +266,8 @@ if (checkingSession) {
               </motion.div>
             )}
 
+            {activeSection === "staff" && <StaffPhaseOneAdmin view="management" />}
+            {activeSection === "staff-settings" && <StaffPhaseOneAdmin view="settings" />}
             {activeSection === "offers" && <OfferImagesAdmin store={store} onSave={handleSave} />}
             {activeSection === "instagram" && <InstagramImagesAdmin store={store} onSave={handleSave} />}
             {activeSection === "courses" && <CoursesAdmin store={store} onSave={handleSave} />}
