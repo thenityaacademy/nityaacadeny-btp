@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { AlertCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertCircle, ImageUp, Trash2, CheckCircle2, ShieldCheck } from "lucide-react";
 import { defaultFormEditor, type FormEditorConfig } from "../data/staffFormEditor";
 
 type Staff={id:string;name:string};
@@ -17,7 +17,70 @@ const courseGroups=[
 ];
 export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;staff:Staff;config:FormConfig}){
   const [values,setValues]=useState<Record<string,string>>({});
+  const [selectedPhoto,setSelectedPhoto]=useState<File|null>(null);
+  const [photoPreview,setPhotoPreview]=useState("");
+  const [photoConsent,setPhotoConsent]=useState(false);
+  const [photoRef,setPhotoRef]=useState<string|null>(null);
+  const [photoExpiresAt,setPhotoExpiresAt]=useState("");
+  const [photoBusy,setPhotoBusy]=useState(false);
+  const [photoError,setPhotoError]=useState("");
+  const [photoMessage,setPhotoMessage]=useState("");
+  useEffect(()=>{
+    if(!selectedPhoto){setPhotoPreview("");return;}
+    const url=URL.createObjectURL(selectedPhoto);
+    setPhotoPreview(url);
+    return()=>URL.revokeObjectURL(url);
+  },[selectedPhoto]);
+  const choosePhoto=(photo:File|null)=>{
+    setPhotoError("");setPhotoMessage("");
+    if(!photo){setSelectedPhoto(null);return;}
+    if(photoRef){setPhotoError("Remove the previous uploaded photo before selecting another.");return;}
+    if(!["image/jpeg","image/png"].includes(photo.type)){
+      setPhotoError("Only JPG and PNG files are allowed.");return;
+    }
+    if(photo.size<1||photo.size>2500000){
+      setPhotoError("Photo must be smaller than 2.5 MB.");return;
+    }
+    setSelectedPhoto(photo);
+  };
+  const uploadPhoto=async()=>{
+    if(!selectedPhoto||!photoConsent||!config.photoStorageEnabled||photoBusy||photoRef)return;
+    setPhotoBusy(true);setPhotoError("");setPhotoMessage("");
+    try{
+      const body=new FormData();
+      body.append("kind",kind);
+      body.append("photo",selectedPhoto);
+      body.append("consent","yes");
+      const response=await fetch("/api/staff/photo/upload",{
+        method:"POST",credentials:"include",body,cache:"no-store"
+      });
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(result.error||"Private photo upload failed.");
+      if(typeof result.photoId!=="string")throw new Error("No private photo receipt returned.");
+      setPhotoRef(result.photoId);
+      setPhotoExpiresAt(result.expiresAt||"");
+      setPhotoMessage("Photo securely uploaded to your private Drive draft folder. No student application has been submitted.");
+    }catch(e){setPhotoError(e instanceof Error?e.message:"Private photo upload failed");}
+    finally{setPhotoBusy(false);}
+  };
+  const removePhoto=async()=>{
+    if(!photoRef){setSelectedPhoto(null);setPhotoConsent(false);setPhotoMessage("");return;}
+    if(photoBusy)return;
+    setPhotoBusy(true);setPhotoError("");setPhotoMessage("");
+    try{
+      const response=await fetch("/api/staff/photo/delete",{
+        method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({photoId:photoRef,kind}),cache:"no-store"
+      });
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(result.error||"Could not remove the private draft.");
+      setSelectedPhoto(null);setPhotoRef(null);setPhotoExpiresAt("");setPhotoConsent(false);
+      setPhotoMessage("Photo removed from your private Drive draft.");
+    }catch(e){setPhotoError(e instanceof Error?e.message:"Could not remove photo");}
+    finally{setPhotoBusy(false);}
+  };
   const error="";
+
   const terms=kind==="admission"?config.admissionTerms:config.scholarshipTerms;
   const courses=(config.courses||[]).filter(c=>c.active);
   const fields=(config.formEditor||defaultFormEditor())[kind].fields;
@@ -69,7 +132,11 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
     <div>
       <h2 className="text-2xl font-bold">{kind === "admission" ? "Student Admission" : "ECCE Scholarship"} Form</h2>
       <p className="text-sm text-slate-600 mt-2">Staff Reference: <strong>{staff.name} ({staff.id})</strong> — verified by server</p>
-      <p className="text-sm text-red-700 mt-2 font-semibold">Demo only: do not enter any real student Aadhaar, phone, address or photo. No data is submitted or saved here.</p>
+      <p className="text-sm text-red-700 mt-2 font-semibold">
+        {config.photoStorageEnabled
+          ? "Form preview only: do not enter real student Aadhaar or personal details. Photo upload stores a 48-hour private draft, NOT a submitted application. Use only a synthetic test image until final submissions are approved."
+          : "Demo only: do not enter real student Aadhaar, phone or address. The selected photo will only be previewed on this device and will NOT be uploaded or saved."}
+      </p>
       <p className="text-sm text-amber-800 mt-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
         {config.submissionsEnabled
           ? "Staff Portal is accepting applications. Check all details carefully before final submission."
@@ -178,14 +245,49 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
         </label>)}
       </div>
     </section>}
-    <section className="space-y-2">
-      <h3 className="text-lg font-semibold">Student Photo</h3>
-      <input type="file" accept="image/jpeg,image/png" name="photo" disabled={true}
-        className="block w-full rounded-lg border border-slate-200 bg-slate-100 p-3 disabled:cursor-not-allowed"
-        />
-      <p className="text-sm text-amber-800">
-        Photo upload and official PDF will be enabled after the secure Google Drive integration is tested.
-      </p>
+    <section className="space-y-3 rounded-xl bg-slate-50 border p-4 sm:p-5">
+      <h3 className="text-lg font-semibold flex items-center gap-2"><ImageUp size={20}/> Student Photo</h3>
+      <p className="text-sm text-slate-600">JPG/PNG only, maximum 2.5 MB. Photos are never publicly shared. A photo draft is not an admission.</p>
+      <input type="file" name="photo" accept="image/jpeg,image/png"
+        disabled={photoBusy||!!photoRef}
+        onChange={e=>{choosePhoto(e.currentTarget.files?.[0]||null);e.currentTarget.value="";}}
+        className="block w-full rounded-lg border border-slate-300 bg-white p-3 text-sm disabled:opacity-50"/>
+      {photoPreview&&<div className="flex items-center gap-4 flex-wrap">
+        <img src={photoPreview} alt="Photo preview (only on this device)"
+          className="h-36 w-32 rounded-lg object-cover border border-slate-300 bg-white"/>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">{selectedPhoto?.name||"Selected photo"}</p>
+          <p className="text-xs text-slate-500">{selectedPhoto?Math.ceil(selectedPhoto.size/1024)+" KB":""}</p>
+          {photoRef?<p className="text-sm text-green-700 flex items-center gap-2">
+            <CheckCircle2 size={16}/> Private Drive draft uploaded
+          </p>:<p className="text-sm text-blue-700">Local preview only — not yet uploaded</p>}
+        </div>
+      </div>}
+      {selectedPhoto&&config.photoStorageEnabled&&!photoRef&&<>
+        <label className="flex gap-2 text-sm items-start">
+          <input type="checkbox" className="mt-1" checked={photoConsent}
+            onChange={e=>setPhotoConsent(e.target.checked)}/>
+          I confirm the student or guardian has consented to this private photo upload.
+        </label>
+        <button type="button" disabled={photoBusy||!photoConsent}
+          onClick={()=>void uploadPhoto()} className="pill-btn-primary disabled:opacity-40">
+          <ImageUp size={16} className="mr-2"/>{photoBusy?"Uploading...":"Upload Photo to Private Google Drive"}
+        </button>
+      </>}
+      {selectedPhoto&&!photoRef&&!config.photoStorageEnabled&&<p className="text-sm text-amber-800">
+        Private Drive upload is not enabled yet. This image stays only in your browser until you close this preview.
+      </p>}
+      {photoRef&&<p className="text-xs text-slate-600 flex items-center gap-2">
+        <ShieldCheck size={16}/> Staff-owned private draft. Expires {photoExpiresAt?new Date(photoExpiresAt).toLocaleString("en-IN"):"within 48 hours"}. It is not yet linked to a submitted form.
+      </p>}
+      {selectedPhoto&&<button type="button" disabled={photoBusy}
+        onClick={()=>void removePhoto()}
+        className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm text-red-700 disabled:opacity-50">
+        <Trash2 size={16}/>{photoRef?"Remove Private Draft":"Clear Selected Photo"}
+      </button>}
+      {photoError&&<p role="alert" className="text-sm text-red-700 rounded-lg bg-red-50 p-3">{photoError}</p>}
+      {photoMessage&&<p role="status" className="text-sm text-green-800 rounded-lg bg-green-50 p-3">{photoMessage}</p>}
+      <p className="text-xs text-slate-500">A private photo draft will be deleted after expiry; remove unused photos sooner using the button above.</p>
     </section>
     {terms&&<p className="text-sm text-slate-600 whitespace-pre-wrap p-4 bg-slate-50 rounded-xl">{terms}</p>}
     <label className="flex gap-2 text-sm items-start">
