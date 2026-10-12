@@ -207,6 +207,13 @@ export default function Header() {
               </div>
             ))}
             <Link
+              to="/staff"
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center justify-center w-full rounded-xl border-2 border-primary px-4 py-3 text-sm font-semibold text-primary transition-colors hover:bg-primary-light"
+            >
+              Staff Login
+            </Link>
+            <Link
               to="/admission"
               onClick={() => setMobileOpen(false)}
               className="w-full mt-2 pill-btn-primary text-xs"

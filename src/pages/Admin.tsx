@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { LogIn, Lock, Eye, EyeOff, LayoutDashboard, Image, BookOpen, Newspaper, FileText, Settings, Save, Trash2, Plus, X, CheckCircle, AlertTriangle, Award } from "lucide-react";
 import { getStore, setStore } from "../data/store";
 import StaffPhaseOneAdmin from "../components/StaffPhaseOneAdmin";
+import StaffManagementAdmin from "../components/StaffManagementAdmin";
 
 const SECTIONS = [
   { id: "staff", label: "Staff Management", icon: Lock },
@@ -266,7 +267,7 @@ if (checkingSession) {
               </motion.div>
             )}
 
-            {activeSection === "staff" && <StaffPhaseOneAdmin view="management" />}
+            {activeSection === "staff" && <StaffManagementAdmin />}
             {activeSection === "staff-settings" && <StaffPhaseOneAdmin view="settings" />}
             {activeSection === "offers" && <OfferImagesAdmin store={store} onSave={handleSave} />}
             {activeSection === "instagram" && <InstagramImagesAdmin store={store} onSave={handleSave} />}
