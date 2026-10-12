@@ -70,7 +70,7 @@ export default function StaffPhotoStorageAdmin(){
     className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-40">
     <ShieldCheck size={16}/>{busy==="test"?"Testing...":"Test Private Photo Drive (no real student)"}
    </button>
-   <button type="button" disabled={!!busy||!health?.configured} onClick={()=>void cleanup()}
+   <button type="button" disabled={!!busy||!health?.enabled} onClick={()=>void cleanup()}
     className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-40">
     <Trash2 size={16}/> Cleanup Expired Drafts
    </button>
