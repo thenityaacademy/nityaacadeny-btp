@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { LogIn, LogOut, ShieldCheck, FileText, GraduationCap, Users, LockKeyhole } from "lucide-react";
+import { LogIn, LogOut, ShieldCheck, FileText, GraduationCap, Users, LockKeyhole, ClipboardList } from "lucide-react";
+import StaffApplicationPreview, { type FormConfig, type Kind } from "../components/StaffApplicationPreview";
 
 type Staff={id:string;name:string};
 type Dashboard={
@@ -18,6 +19,8 @@ async function api(path:string,init?:RequestInit){
 export default function StaffLogin(){
   const [staff,setStaff]=useState<Staff|null>(null);
   const [dashboard,setDashboard]=useState<Dashboard|null>(null);
+  const [formConfig,setFormConfig]=useState<FormConfig|null>(null);
+  const [activeTab,setActiveTab]=useState<"dashboard"|Kind>("dashboard");
   const [checking,setChecking]=useState(true);
   const [busy,setBusy]=useState(false);
   const [staffId,setStaffId]=useState("");
@@ -26,9 +29,12 @@ export default function StaffLogin(){
   const load=async()=>{
     const current=await api("/api/staff/session");
     if(current.authenticated&&current.staff){
-      const summary=await api("/api/staff/dashboard") as Dashboard;
-      setStaff(summary.staff);setDashboard(summary);
-    }else{setStaff(null);setDashboard(null);}
+      const [summary,settings]=await Promise.all([
+        api("/api/staff/dashboard") as Promise<Dashboard>,
+        api("/api/staff/config") as Promise<FormConfig>
+      ]);
+      setStaff(summary.staff);setDashboard(summary);setFormConfig(settings);
+    }else{setStaff(null);setDashboard(null);setFormConfig(null);setActiveTab("dashboard");}
   };
   useEffect(()=>{
     let mounted=true;
@@ -54,7 +60,7 @@ export default function StaffLogin(){
     setBusy(true);setError("");
     try{await api("/api/staff/logout",{method:"POST"});}
     catch(e){setError(e instanceof Error?e.message:"Could not sign out");}
-    finally{setStaff(null);setDashboard(null);setPassword("");setBusy(false);}
+    finally{setStaff(null);setDashboard(null);setFormConfig(null);setActiveTab("dashboard");setPassword("");setBusy(false);}
   };
   return <main className="min-h-screen bg-slate-50 px-4 py-8 sm:py-12">
     <div className="mx-auto max-w-5xl">
@@ -96,10 +102,24 @@ export default function StaffLogin(){
           <h2 className="text-xl font-bold">Welcome, {staff.name}</h2>
           <p className="text-sm text-slate-600 mt-1">Staff ID: <strong>{staff.id}</strong></p>
           <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
-            Phase 2: secure Staff Login and Dashboard are active. Admission, Scholarship, PDF and Google Drive
-            features remain disabled until their separate testing is complete.
+            Staff Login and Course/Scholarship Form previews are available. Final Submit, Photo Upload, PDF and WhatsApp are disabled until their separate testing is complete.
           </div>
         </div>
+        <div className="rounded-2xl border bg-white p-4 sm:p-5 flex flex-wrap gap-3">
+          <button type="button" onClick={()=>setActiveTab("dashboard")}
+            className={activeTab==="dashboard"?"pill-btn-primary":"rounded-xl border px-4 py-2"}>Dashboard</button>
+          <button type="button" onClick={()=>setActiveTab("admission")}
+            className={activeTab==="admission"?"pill-btn-primary":"rounded-xl border px-4 py-2"}>Admission Form Preview</button>
+          <button type="button" onClick={()=>setActiveTab("scholarship")}
+            className={activeTab==="scholarship"?"pill-btn-primary":"rounded-xl border px-4 py-2"}>ECCE Scholarship Preview</button>
+        </div>
+        {activeTab==="dashboard"?<>
+          <a href={formConfig?.enquiryUrl||"https://docs.google.com/forms/d/e/1FAIpQLSfF9DJ9QMfzqFeB6LKYBT62-rPcwo8cCahNyZFW0oHDrYpLoA/viewform?usp=header"}
+            target="_blank" rel="noopener noreferrer"
+            className="block rounded-2xl bg-white border p-5 hover:border-blue-600">
+            <h3 className="font-semibold flex items-center gap-2"><ClipboardList size={21}/>Daily Enquiry — Google Form</h3>
+            <p className="text-sm text-slate-600 mt-1">Open the institute’s existing enquiry form. Staff reference is not automatically submitted into the external Google Form yet.</p>
+          </a>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-2xl bg-white border p-6">
             <FileText size={24} className="text-blue-700"/>
@@ -121,6 +141,8 @@ export default function StaffLogin(){
             enabled phase by phase after Admin approval.
           </p>
         </div>
+        </>:formConfig?<StaffApplicationPreview key={activeTab} kind={activeTab} staff={staff} config={formConfig}/>:
+        <p className="rounded-xl border bg-white p-4 text-slate-600">Form settings are loading. Please refresh this page.</p>}
         {error&&<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       </div>}
     </div>
