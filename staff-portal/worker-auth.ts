@@ -126,6 +126,53 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
     if(!isAdmin) return json({error:"Admin required"},403);
     return json(await probeDriveBridge(env));
   }
+  // One-click read/write health test. Apps Script writes and trashes a tiny
+  // temporary marker only; no student files or course logo rows are changed.
+  if(pathname==="/api/admin/staff/bridge-drive-test" && post) {
+    if(!isAdmin) return json({error:"Admin required"},403);
+    if(!driveReady(env)) return json({
+      success:false,code:"MISSING_CONFIG",
+      message:"Google Apps Script URL or Secret missing from this Preview."
+    });
+    try {
+      const result=await driveRequest(env,{action:"verifyDrive"});
+      if(result.driveRead===true && result.driveWrite===true) return json({
+        success:true,code:"DRIVE_READ_WRITE_OK",
+        message:"Google Drive private folder read and file upload/delete test succeeded."
+      });
+      return json({
+        success:false,code:"INCOMPLETE_TEST",
+        message:"Apps Script did not confirm both Drive read and write permissions."
+      });
+    }catch(e) {
+      const reason=e instanceof Error?e.message:"";
+      console.error("Staff Portal Google Drive write verification failed",reason);
+      if(/unsupported operation/i.test(reason))return json({
+        success:false,code:"OLD_SCRIPT_VERSION",
+        message:"Updated Apps Script must be deployed as a NEW VERSION of the existing Web App."
+      });
+      if(/unauthorized/i.test(reason))return json({
+        success:false,code:"SECRET_MISMATCH",
+        message:"Apps Script Script Property and Preview Secret do not match."
+      });
+      if(/authorization|permission|scope|access denied|not authorized/i.test(reason))return json({
+        success:false,code:"DRIVE_PERMISSION",
+        message:"Web App cannot write to Drive. Verify Execute as: Me, reauthorize Drive write in the editor, and redeploy."
+      });
+      if(/folder|file not found|does not exist/i.test(reason))return json({
+        success:false,code:"DRIVE_FOLDER",
+        message:"The Drive folder is missing or unavailable to the Web App execution account."
+      });
+      if(/quota|storage|limit exceeded/i.test(reason))return json({
+        success:false,code:"DRIVE_QUOTA",
+        message:"Google Drive or Apps Script storage quota may be exhausted."
+      });
+      return json({
+        success:false,code:"SCRIPT_OR_NETWORK_ERROR",
+        message:"Apps Script upload verification failed. Check its Web App execution details."
+      });
+    }
+  }
   if(pathname==="/api/admin/staff/course-logo" && ["POST","GET","DELETE"].includes(request.method)) {
     if(!isAdmin) return json({error:"Admin required"},403);
     return handleCourseLogo(request,env);
