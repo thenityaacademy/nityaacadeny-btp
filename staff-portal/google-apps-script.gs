@@ -208,6 +208,52 @@ function verifyStaffDriveAccess() {
  }
 }
 
+/**
+ * No-student PDF smoke test for administrators only, invoked by the Worker
+ * with its shared Apps Script secret. NO D1 inserts and NO Sheets writes.
+ * Real folder files are only temporary and moved to Trash in finally.
+ */
+function verifyPdfGeneration_(p){
+  const main=DriveApp.getFileById(DRIVE_FOLDERS.mainLogo);
+  if(!main || !main.getBlob())throw Error("Academy logo unavailable");
+  const photoPlaceholder={getBlob:function(){return main.getBlob();}};
+  const results=[];
+  const temporary=[];
+  const marker="TESTPDF-"+Utilities.getUuid().replace(/-/g,"").slice(0,12);
+  try{
+    ["admission","scholarship"].forEach(function(type){
+      const request={
+        type:type,
+        recordId:Utilities.getUuid(),
+        formNumber:marker+"-"+(type==="admission"?"ADM":"SCH"),
+        createdAt:new Date().toISOString(),
+        staffName:"TEST SYSTEM",
+        staffId:"TEST-ONLY",
+        fields:{
+          studentName:"TEST ONLY - NOT A STUDENT",
+          fatherName:"SAMPLE - NOT REAL",
+          gender:"Not applicable",
+          mobile:"0000000000",
+          course:type==="admission"?"ECCE":"ECCE Scholarship"
+        },
+        terms:"TEST ONLY. NOT AN ADMISSION OR SCHOLARSHIP REGISTRATION.",
+        courseLogoFileId:type==="admission" && p.courseLogoFileId ?p.courseLogoFileId:null
+      };
+      const pdf=buildPdf_(request,photoPlaceholder,null);
+      temporary.push(pdf);
+      if(pdf.getMimeType()!==MimeType.PDF || pdf.getSize()<500)
+        throw Error(type+" PDF was empty or invalid");
+      results.push({type:type,validPdf:true,bytes:pdf.getSize()});
+    });
+    return {success:true,code:"PDF_GENERATION_OK",tests:results,
+      message:"Admission and Scholarship test PDFs generated successfully. Both temporary PDFs were sent to Trash."};
+  }finally{
+    temporary.forEach(function(file){
+      try{file.setTrashed(true);}catch(e){console.error("Test PDF cleanup issue",e);}
+    });
+  }
+}
+
 function doPost(e){
  let locked=false;
  const lock=LockService.getScriptLock();
@@ -226,6 +272,7 @@ function doPost(e){
    case "deleteCourseLogo":result=deleteLogo_(payload);break;
    case "getPdf":result=fetchPdf_(payload);break;
    case "verifyDrive":result=verifyStaffDriveAccess();break;
+   case "verifyPdf":result=verifyPdfGeneration_(payload);break;
    default:throw Error("Unsupported operation");
   }
   return response_(result);
