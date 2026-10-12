@@ -28,3 +28,13 @@ CURRENT STATUS:
 
 SECURITY:
 Student PDFs contain Aadhaar and other personal information. Never share PDFs or folders publicly. WhatsApp desktop flow requires staff to download and attach the PDF. Mobile share sheet may allow sending an actual file; user must confirm Send. Automatic WhatsApp messages require a separate approved Business API.
+
+STAGING UPDATE (2026-10-12):
+- Cloudflare Worker Previews migration succeeded; non-production deploy command is now npx wrangler preview.
+- GitHub development branch wrangler.jsonc name fixed to nityaacadeny-btp.
+- previews.d1_databases.DB points to nitya-academy-staff-test-db (e05ec60a-421b-4283-8ed6-2dcbcb5a1c11), not live nitya-academy-db.
+- previews.vars.STAFF_SUBMISSIONS_ENABLED is false by design.
+- Test D1 schema (12 application/site tables + indexes) cloned with NO records; only public 13-course catalog is seeded.
+- Preview Base needs independent ADMIN_PASSWORD and STAFF_SHEETS_SECRET secrets; do NOT use production credentials or publish them in GitHub.
+- No student/staff personal records or issued registration sequences were copied.
+- Old version-prefix URLs remain version URLs using production bindings; ONLY new Worker Preview URLs with confirmed test DB are suitable for staging tests.
