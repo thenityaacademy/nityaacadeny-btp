@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, ImageUp, Trash2, CheckCircle2, ShieldCheck } from "lucide-react";
+import { AlertCircle, ImageUp, Trash2, CheckCircle2, ShieldCheck, Download, MessageCircle, RefreshCcw } from "lucide-react";
 import { defaultFormEditor, type FormEditorConfig } from "../data/staffFormEditor";
 
 type Staff={id:string;name:string};
@@ -79,7 +79,63 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
     }catch(e){setPhotoError(e instanceof Error?e.message:"Could not remove photo");}
     finally{setPhotoBusy(false);}
   };
-  const error="";
+  type Receipt={recordId:string;kind:Kind;number:string;studentName:string;mobile:string;
+    pdfReady:boolean;pdfUrl:string|null;sheetStatus:string;documentStatus:string;notice?:string};
+  const [termsAccepted,setTermsAccepted]=useState(false);
+  const [submitting,setSubmitting]=useState(false);
+  const [submitError,setSubmitError]=useState("");
+  const [receipt,setReceipt]=useState<Receipt|null>(null);
+  const whatsappMessage=receipt
+    ?"नमस्कार! Nitya Academy, Bharatpur में आपका "+(kind==="admission"?"Admission":"ECCE Scholarship Registration")+
+       " रिकॉर्ड दर्ज हुआ है।\nStudent: "+receipt.studentName+"\n"+
+       (kind==="admission"?"Application No.: ":"Registration No.: ")+receipt.number+
+       "\nकृपया अपने रिकॉर्ड और PDF की जानकारी के लिए Nitya Academy से संपर्क करें।\n"+
+       "Future yahin se shuru hota hai...\nContact: 9680008384 | 9802813444"
+    :"";
+  const submissionAction=async(retry=false)=>{
+    if(submitting||!config.submissionsEnabled)return;
+    if(!retry&&(!photoRef||!photoConsent||!termsAccepted)){
+      setSubmitError("Upload a private photo and accept Student/Guardian Consent and Terms.");
+      return;
+    }
+    setSubmitting(true);setSubmitError("");
+    try{
+      const url=retry?"/api/staff/application/retry":"/api/staff/application/submit";
+      const payload=retry?{recordId:receipt?.recordId}:{
+        kind,photoId:photoRef,termsAccepted:true,fields:kind==="scholarship"?{...values,passed12:"yes"}:values
+      };
+      const response=await fetch(url,{method:"POST",credentials:"include",
+        headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),cache:"no-store"});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw Error(data.error||"Unable to save the application");
+      if(!data.recordId||!data.number)throw Error("Server did not return a registration receipt");
+      setReceipt(data as Receipt);
+    }catch(e){setSubmitError(e instanceof Error?e.message:"Form submission failed");}
+    finally{setSubmitting(false);}
+  };
+  const downloadPdf=()=>{if(receipt?.pdfUrl)window.open(receipt.pdfUrl,"_blank","noopener,noreferrer");};
+  const shareWhatsApp=async()=>{
+    if(!receipt)return;
+    const recipient=(values.whatsapp||values.mobile||receipt.mobile||"").replace(/\D/g,"");
+    const url="https://wa.me/"+(recipient.length===10?"91"+recipient:"")+"?text="+encodeURIComponent(whatsappMessage);
+    if(receipt.pdfReady&&receipt.pdfUrl&&navigator.share){
+      try{
+        const response=await fetch(receipt.pdfUrl,{credentials:"include",cache:"no-store"});
+        if(!response.ok)throw Error("Cannot fetch PDF for sharing");
+        const blob=await response.blob();
+        const file=new File([blob],"Nitya-Academy-"+receipt.number+".pdf",{type:"application/pdf"});
+        if(navigator.canShare?.({files:[file]})){
+          await navigator.share({files:[file],title:"Nitya Academy Form",text:whatsappMessage});
+          return;
+        }
+      }catch(e){
+        if(e instanceof Error&&e.name==="AbortError")return;
+        setSubmitError("PDF sharing needs a supported device. Download the PDF and attach it manually in WhatsApp.");
+      }
+    }
+    window.open(url,"_blank","noopener,noreferrer");
+  };
+  const error=submitError;
 
   const terms=kind==="admission"?config.admissionTerms:config.scholarshipTerms;
   const courses=(config.courses||[]).filter(c=>c.active);
@@ -127,15 +183,17 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
     </label>;
   };
   const yesNo=[{value:"yes",label:"Yes"},{value:"no",label:"No"}];
-  // Preview never performs a request, even if runtime settings change.
-  return <form onSubmit={event=>event.preventDefault()} className="rounded-2xl bg-white border p-5 md:p-8 space-y-6">
+  // A complete form may submit only when the backend has independently passed security checks and enabled submissions.
+  return <form onSubmit={event=>{event.preventDefault();void submissionAction();}} className="rounded-2xl bg-white border p-5 md:p-8 space-y-6">
     <div>
       <h2 className="text-2xl font-bold">{kind === "admission" ? "Student Admission" : "ECCE Scholarship"} Form</h2>
       <p className="text-sm text-slate-600 mt-2">Staff Reference: <strong>{staff.name} ({staff.id})</strong> — verified by server</p>
       <p className="text-sm text-red-700 mt-2 font-semibold">
-        {config.photoStorageEnabled
-          ? "Form preview only: do not enter real student Aadhaar or personal details. Photo upload stores a 48-hour private draft, NOT a submitted application. Use only a synthetic test image until final submissions are approved."
-          : "Demo only: do not enter real student Aadhaar, phone or address. The selected photo will only be previewed on this device and will NOT be uploaded or saved."}
+        {config.submissionsEnabled
+          ? "Check student's identity and consent carefully. Only submit correct details; you will receive a unique application/registration number."
+          : config.photoStorageEnabled
+            ? "Testing only: do not enter real student Aadhaar or other personal details until Final Submit is approved. Photos are temporary private drafts."
+            : "Demo only: do not enter real student Aadhaar, phone or address. The selected photo stays in your browser."}
       </p>
       <p className="text-sm text-amber-800 mt-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
         {config.submissionsEnabled
@@ -291,12 +349,38 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
     </section>
     {terms&&<p className="text-sm text-slate-600 whitespace-pre-wrap p-4 bg-slate-50 rounded-xl">{terms}</p>}
     <label className="flex gap-2 text-sm items-start">
-      <input required type="checkbox" className="mt-1"/>
-      I confirm that student consent has been obtained and I agree to the Terms & Conditions.
+      <input required type="checkbox" className="mt-1" checked={termsAccepted}
+        disabled={!!receipt} onChange={e=>setTermsAccepted(e.target.checked)}/>
+      I confirm that student or guardian has consented and the Terms & Conditions are accepted.
     </label>
     {error&&<p role="alert" className="text-sm text-red-700 flex gap-2"><AlertCircle size={17}/>{error}</p>}
-    <button type="button" disabled className="pill-btn-primary disabled:opacity-50">
-      Final Submit — Not Enabled
-    </button>
+    {receipt&&<div className="rounded-xl border border-green-300 bg-green-50 p-4 space-y-3">
+      <p className="font-bold text-green-900">Form Recorded — {receipt.number}</p>
+      <p className="text-sm">Student: <strong>{receipt.studentName}</strong></p>
+      <p className="text-sm">PDF: <strong>{receipt.pdfReady?"Ready":"Processing — Retry Required"}</strong></p>
+      <p className="text-sm">Google Sheet: <strong>{receipt.sheetStatus==="synced"?"Synced":"Pending — Retry Required"}</strong></p>
+      {receipt.notice&&<p className="text-sm text-amber-900">{receipt.notice}</p>}
+      <div className="flex flex-wrap gap-2">
+        {receipt.pdfReady&&receipt.pdfUrl&&<button type="button" onClick={downloadPdf}
+          className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2">
+          <Download size={16}/> Download PDF
+        </button>}
+        {receipt.pdfReady&&<button type="button" onClick={()=>void shareWhatsApp()}
+          className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2">
+          <MessageCircle size={16}/> Share PDF / Message on WhatsApp
+        </button>}
+        {(!receipt.pdfReady||receipt.sheetStatus!=="synced")&&<button type="button"
+          disabled={submitting} onClick={()=>void submissionAction(true)}
+          className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-50">
+          <RefreshCcw size={16}/> Retry PDF / Sheet Processing
+        </button>}
+      </div>
+      <p className="text-xs text-slate-600">On supported mobile devices the PDF can be shared as a file. Otherwise download it and attach it manually to WhatsApp; sending is never automatic.</p>
+    </div>}
+    {!receipt&&<button type="submit"
+      disabled={!config.submissionsEnabled||submitting||!photoRef||!photoConsent||!termsAccepted}
+      className="pill-btn-primary disabled:opacity-50">
+      {config.submissionsEnabled?(submitting?"Submitting...":"Submit Form & Generate PDF"):"Final Submit — Not Enabled"}
+    </button>}
   </form>;
 }
