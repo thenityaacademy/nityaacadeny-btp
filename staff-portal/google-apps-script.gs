@@ -187,6 +187,27 @@ function upsertSheet_(payload){
  sheet.getRange(row,1,1,width).setNumberFormat("@").setValues([data]);
  return {success:true,row:row};
 }
+
+/**
+ * Safe, temporary read/write probe. Can be Run from the editor to obtain
+ * Google Drive scopes; also callable from the authenticated Web App.
+ * Never accepts a user file or student data. Temporary test file is trashed.
+ */
+function verifyStaffDriveAccess() {
+ const folder=DriveApp.getFolderById(DRIVE_FOLDERS.logos);
+ const folderName=folder.getName();
+ let testFile=null;
+ try{
+   const marker="NITYA-PORTAL-ACCESS-TEST-"+Utilities.getUuid()+".txt";
+   testFile=folder.createFile(Utilities.newBlob("Temporary access check","text/plain",marker));
+   if(!testFile || testFile.getName()!==marker)throw Error("Drive test file verification failed");
+   Logger.log("Drive read and write successful: "+folderName);
+   return {success:true,driveRead:true,driveWrite:true,code:"DRIVE_READ_WRITE_OK"};
+ } finally{
+   if(testFile)testFile.setTrashed(true);
+ }
+}
+
 function doPost(e){
  let locked=false;
  const lock=LockService.getScriptLock();
@@ -204,6 +225,7 @@ function doPost(e){
    case "getCourseLogo":result=getLogo_(payload);break;
    case "deleteCourseLogo":result=deleteLogo_(payload);break;
    case "getPdf":result=fetchPdf_(payload);break;
+   case "verifyDrive":result=verifyStaffDriveAccess();break;
    default:throw Error("Unsupported operation");
   }
   return response_(result);
