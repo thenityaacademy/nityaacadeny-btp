@@ -1,4 +1,4 @@
-import { driveReady,driveRequest,fromBase64 } from "./worker-drive";
+import { driveReady,driveRequest,fromBase64,probeDriveBridge } from "./worker-drive";
 import { handleCourseLogo,setCourseLogoStatus } from "./worker-course-logos";
 import { listStaffCourses } from "./worker-courses";
 import { syncApplications } from "./worker-sheets";
@@ -120,6 +120,11 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
       secretConfigured:!!env.STAFF_SHEETS_SECRET,
       status:driveReady(env)?"configured":"missing_binding"
     });
+  }
+  // Non-mutating Apps Script authentication probe: no student data or file writes.
+  if(pathname==="/api/admin/staff/bridge-probe" && request.method==="GET") {
+    if(!isAdmin) return json({error:"Admin required"},403);
+    return json(await probeDriveBridge(env));
   }
   if(pathname==="/api/admin/staff/course-logo" && ["POST","GET","DELETE"].includes(request.method)) {
     if(!isAdmin) return json({error:"Admin required"},403);
