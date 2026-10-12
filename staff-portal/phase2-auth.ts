@@ -5,6 +5,7 @@
  * /api/admin/staff/ must be denied (never fall through to asset handling).
  * The existing site's HMAC-signed admin session supplies isAdmin.
  */
+import { listStaffCourses } from "./worker-courses";
 type Env = {DB:D1Database};
 type StaffRow = {id:string;full_name:string;password_hash:string;active:number};
 const COOKIE="nitya_staff_session";
@@ -145,6 +146,27 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
       notice:"Admission, Scholarship and PDF features will be enabled after separate security and form tests."});
   }
 
+
+  // Forms are PREVIEW ONLY: never allow POST submissions in this release.
+  // All settings are server-provided, and staff identity is derived from the session.
+  if(path==="/api/staff/config"&&request.method==="GET"){
+    const staff=await getStaffSession(request,env);
+    if(!staff)return out({error:"Staff login required"},401);
+    const [settings,courses]=await Promise.all([
+      env.DB.prepare("SELECT setting_key,setting_value FROM portal_settings WHERE setting_key IN ('enquiryUrl','admissionTerms','scholarshipTerms')").all<{setting_key:string;setting_value:string}>(),
+      listStaffCourses(env)
+    ]);
+    const data=Object.fromEntries(settings.results.map(x=>[x.setting_key,x.setting_value]));
+    return out({
+      enquiryUrl:data.enquiryUrl||"",
+      admissionTerms:data.admissionTerms||"",
+      scholarshipTerms:data.scholarshipTerms||"",
+      courses:courses.filter(x=>x.active),
+      photoStorageEnabled:false,
+      submissionsEnabled:false,
+      note:"Form preview only. Final submit, image upload, PDF and WhatsApp are not enabled."
+    });
+  }
   // All other staff endpoints fail closed. No form/Drive/Sheets routes in Phase 2.
   if(path.startsWith("/api/staff/"))return out({error:"This Staff Portal feature is not yet enabled."},503);
 
@@ -222,6 +244,95 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
       env.DB.prepare("UPDATE staff_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE staff_id=? AND revoked_at IS NULL").bind(id)
     ]);
     return out({success:true,id,sessionRevoked:true});
+  }
+
+  if(path==="/api/admin/staff/courses"&&request.method==="GET"){
+    return out({courses:await listStaffCourses(env)});
+  }
+  if(path==="/api/admin/staff/course-status"&&post){
+    const data=await parseJson(request);
+    const id=data?.id,active=data?.active;
+    if(typeof id!=="string"||id.length>80||typeof active!=="boolean")
+      return out({error:"Invalid Staff Course selection"},400);
+    const course=(await listStaffCourses(env)).find(c=>c.id===id);
+    if(!course)return out({error:"Course not found in existing website catalog"},404);
+    await env.DB.prepare(
+      "INSERT INTO staff_courses(course_id,course_name,active) VALUES (?,?,?) "+
+      "ON CONFLICT(course_id) DO UPDATE SET course_name=excluded.course_name,active=excluded.active"
+    ).bind(course.id,course.name,active?1:0).run();
+    return out({success:true,id:course.id,active});
+  }
+  if(path==="/api/admin/staff/portal-config"&&request.method==="GET"){
+    const rows=await env.DB.prepare(
+      "SELECT setting_key,setting_value FROM portal_settings WHERE setting_key IN ('enquiryUrl','admissionTerms','scholarshipTerms')"
+    ).all<{setting_key:string;setting_value:string}>();
+    const data=Object.fromEntries(rows.results.map(x=>[x.setting_key,x.setting_value]));
+    return out({enquiryUrl:data.enquiryUrl||"",admissionTerms:data.admissionTerms||"",
+      scholarshipTerms:data.scholarshipTerms||""});
+  }
+  if(path==="/api/admin/staff/portal-config"&&post){
+    const data=await parseJson(request);
+    if(!data)return out({error:"Invalid settings request"},400);
+    const url=data.enquiryUrl,admissionTerms=data.admissionTerms,scholarshipTerms=data.scholarshipTerms;
+    if(typeof url!=="string"||url.length>550 ||
+      typeof admissionTerms!=="string"||admissionTerms.length>7000 ||
+      typeof scholarshipTerms!=="string"||scholarshipTerms.length>7000)
+      return out({error:"Invalid setting values or maximum length exceeded"},400);
+    if(url.trim()){
+      try{
+        const u=new URL(url.trim());
+        if(u.protocol!=="https:"||!((u.hostname==="docs.google.com"&&u.pathname.startsWith("/forms/"))||
+          u.hostname==="forms.gle") || !!u.username||!!u.password)
+          return out({error:"Enquiry link must be a Google Forms HTTPS URL"},400);
+      }catch{return out({error:"Invalid Enquiry Google Form URL"},400);}
+    }
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO portal_settings(setting_key,setting_value) VALUES ('enquiryUrl',?) "+
+        "ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value").bind(url.trim()),
+      env.DB.prepare("INSERT INTO portal_settings(setting_key,setting_value) VALUES ('admissionTerms',?) "+
+        "ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value").bind(admissionTerms.trim()),
+      env.DB.prepare("INSERT INTO portal_settings(setting_key,setting_value) VALUES ('scholarshipTerms',?) "+
+        "ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value").bind(scholarshipTerms.trim())
+    ]);
+    return out({success:true});
+  }
+  if(path==="/api/admin/staff/registration-series"&&request.method==="GET"){
+    const series=await env.DB.prepare(
+      "SELECT sequence_key,prefix,next_number,end_number FROM registration_sequences "+
+      "WHERE sequence_key='scholarship'"
+    ).first();
+    return out({series:series||null});
+  }
+  if(path==="/api/admin/staff/registration-series"&&post){
+    const data=await parseJson(request);
+    if(!data)return out({error:"Invalid scholarship numbering request"},400);
+    const prefix=data.prefix,start=data.start,end=data.end;
+    if(typeof prefix!=="string"||! /^[A-Za-z0-9-]{0,20}$/.test(prefix)||
+       (typeof start!=="number")||(typeof end!=="number")||!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||
+       Number(start)<1||Number(end)<Number(start)||Number(end)>999999999)
+      return out({error:"Enter a valid prefix and registration number range"},400);
+    const existing=await env.DB.prepare(
+      "SELECT prefix,next_number,end_number FROM registration_sequences "+
+      "WHERE sequence_key='scholarship'"
+    ).first<{prefix:string;next_number:number;end_number:number}>();
+    if(existing){
+      // Issued numbers never reset or repeat. Only lengthen the existing range.
+      if(prefix!==existing.prefix||start!==existing.next_number||end<existing.end_number)
+        return out({error:"Existing sequence cannot be renumbered. Only increase Last Number; keep current Prefix and Next Number."},409);
+      await env.DB.prepare("UPDATE registration_sequences SET end_number=? WHERE sequence_key='scholarship' AND end_number<=?")
+        .bind(end,end).run();
+      return out({success:true,extended:true});
+    }
+    try{
+      await env.DB.prepare(
+        "INSERT INTO registration_sequences(sequence_key,prefix,next_number,end_number) VALUES ('scholarship',?,?,?)"
+      ).bind(prefix,start,end).run();
+      return out({success:true,created:true});
+    }catch(e){
+      if(/UNIQUE|constraint/i.test(String(e)))return out({error:"Sequence changed; refresh and retry"},409);
+      console.error("Registration sequence creation failed",e);
+      return out({error:"Could not configure scholarship registration range"},503);
+    }
   }
   // No release of scholarship settings or any other administrative write.
   return out({error:"This Admin feature is reserved for a later phase."},503);
