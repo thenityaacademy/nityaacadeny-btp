@@ -9,7 +9,7 @@
 - Photos go only to existing **private** Google Drive folders `DRIVE_FOLDERS.admissions.photos` and `DRIVE_FOLDERS.scholarships.photos`.
 - D1 only stores Staff ID, kind, opaque photo UUID, private Drive ID, MIME, size, state and expiry; **no student Aadhaar, name or image bytes**.
 - Remove action only works for the uploading Staff. The file is moved to Drive Trash.
-- Expiry: 48 hours. A guarded Worker Cron trigger cleans up to 20 expired drafts nightly (only when photo feature is activated).
+- Expiry: 48 hours. A guarded Worker Cron trigger cleans up expired and orphaned private Drive photos nightly (only when photo feature is activated).
 - **Admission/Scholarship final Submit, PDFs, Sheet sync and WhatsApp remain DISABLED.** Uploading a photo is not submitting a form. Never test with a real student until the entire workflow is approved.
 
 ## Deployment sequence (no changes to live student records)
@@ -18,13 +18,14 @@
 2. Preview D1 migration `staff-portal/phase-photo-migration.sql` is additive and has been applied only on test DB.
 3. Update *existing* Apps Script `Nitya Academy - Staff Portal` V2:
    - Add a new Apps Script file named `PhotoDraft.gs` and paste contents of `staff-portal/google-apps-script-photo-addon.gs`.
-   - In existing `Code.gs` `doPost(e)` switch, add four cases **before** `default`:
+   - In existing `Code.gs` `doPost(e)` switch, add five cases **before** `default`:
 
 ```javascript
 case "uploadStudentPhoto":result=uploadStudentPhoto_(payload);break;
 case "getStudentPhoto":result=getStudentPhoto_(payload);break;
 case "deleteStudentPhoto":result=deleteStudentPhoto_(payload);break;
 case "verifyStudentPhoto":result=verifyStudentPhotoBridge_();break;
+case "cleanupStudentPhotoDrafts":result=cleanupStudentPhotoDrafts_();break;
 ```
 
 4. Save Apps Script. Select `authorizeStudentPhotoFolders` from function selector and Run once to confirm both private photo folders. The synthetic test images are trashed.
