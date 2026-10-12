@@ -4,6 +4,7 @@ import { LogIn, Lock, Eye, EyeOff, LayoutDashboard, Image, BookOpen, Newspaper, 
 import { getStore, setStore } from "../data/store";
 import StaffPhaseOneAdmin from "../components/StaffPhaseOneAdmin";
 import StaffManagementAdmin from "../components/StaffManagementAdmin";
+import StaffPortalSetupAdmin from "../components/StaffPortalSetupAdmin";
 
 const SECTIONS = [
   { id: "staff", label: "Staff Management", icon: Lock },
@@ -268,7 +269,7 @@ if (checkingSession) {
             )}
 
             {activeSection === "staff" && <StaffManagementAdmin />}
-            {activeSection === "staff-settings" && <StaffPhaseOneAdmin view="settings" />}
+            {activeSection === "staff-settings" && <StaffPortalSetupAdmin />}
             {activeSection === "offers" && <OfferImagesAdmin store={store} onSave={handleSave} />}
             {activeSection === "instagram" && <InstagramImagesAdmin store={store} onSave={handleSave} />}
             {activeSection === "courses" && <CoursesAdmin store={store} onSave={handleSave} />}
