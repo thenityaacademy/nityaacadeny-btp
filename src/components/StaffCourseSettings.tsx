@@ -16,13 +16,21 @@ export default function StaffCourseSettings(){
   const [error,setError]=useState("");
   const [message,setMessage]=useState("");
   const [rev,setRev]=useState(0);
+  const [bridge,setBridge]=useState<{configured:boolean;urlConfigured:boolean;secretConfigured:boolean}|null>(null);
+  const [bridgeError,setBridgeError]=useState("");
+  const checkBridge=async()=>{
+    try{
+      const status=await call("/api/admin/staff/bridge-status");
+      setBridge(status);setBridgeError("");
+    }catch(e){setBridgeError(e instanceof Error?e.message:"Connection check unavailable");}
+  };
   const reload=async()=>{
     setLoading(true);
     try{const data=await call("/api/admin/staff/courses");setCourses(data.courses||[]);setError("");}
     catch(e){setError(e instanceof Error?e.message:"Could not load courses");}
     finally{setLoading(false);}
   };
-  useEffect(()=>{void reload();},[]);
+  useEffect(()=>{void reload();void checkBridge();},[]);
   const toggleCourse=async(course:Course)=>{
     setPending(course.id);setError("");setMessage("");
     try{
@@ -77,6 +85,21 @@ export default function StaffCourseSettings(){
         <p className="text-sm text-slate-500">Website course catalog से linked। Course visibility और PDF Extra Logo की Active/Inactive setting अलग-अलग हैं। Nitya Academy का main logo हमेशा PDF में रहेगा।</p>
       </div>
       <button type="button" onClick={()=>void reload()} disabled={loading} className="rounded-lg px-3 py-2 border text-sm">Refresh</button>
+    </div>
+    <div className="rounded-xl border p-3 text-sm flex flex-wrap gap-3 items-center justify-between">
+      <div>
+        <strong>Google Drive Connection:</strong>{" "}
+        {!bridge?"Checking...":bridge.configured?"Configured (not yet tested)":"Not Configured"}
+        {bridge && !bridge.configured && <span className="block text-amber-800 text-xs mt-1">
+          Missing Preview binding(s): {!bridge.urlConfigured?"STAFF_SHEETS_URL ":""}{!bridge.secretConfigured?"STAFF_SHEETS_SECRET":""}.
+          Cloudflare → Worker → Settings → Preview variables/secrets needs review.
+        </span>}
+        {bridge?.configured && <span className="block text-slate-500 text-xs mt-1">
+          URL and secret present; Google Apps Script authorization must be tested separately.
+        </span>}
+        {bridgeError && <span className="block text-red-700 text-xs mt-1">{bridgeError}</span>}
+      </div>
+      <button type="button" onClick={()=>void checkBridge()} className="border rounded-lg px-3 py-2 text-xs">Check Connection</button>
     </div>
     {error&&<p className="text-red-700 text-sm border border-red-200 bg-red-50 rounded-lg p-3" role="alert">{error}</p>}
     {message&&<p className="text-green-700 text-sm" role="status">{message}</p>}
