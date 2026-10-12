@@ -18,6 +18,7 @@ export default function StaffCourseSettings(){
   const [rev,setRev]=useState(0);
   const [bridge,setBridge]=useState<{configured:boolean;urlConfigured:boolean;secretConfigured:boolean}|null>(null);
   const [bridgeError,setBridgeError]=useState("");
+  const [bridgeProbe,setBridgeProbe]=useState<{connected:boolean;code:string;message:string}|null>(null);
   const [checkingBridge,setCheckingBridge]=useState(false);
   const [bridgeCheckedAt,setBridgeCheckedAt]=useState("");
   const checkBridge=async()=>{
@@ -25,6 +26,10 @@ export default function StaffCourseSettings(){
     try{
       const status=await call("/api/admin/staff/bridge-status");
       setBridge(status);setBridgeError("");
+      if(status.configured){
+        const probe=await call("/api/admin/staff/bridge-probe");
+        setBridgeProbe(probe);
+      }else setBridgeProbe(null);
     }catch(e){setBridgeError(e instanceof Error?e.message:"Connection check unavailable");}
     finally{
       setBridgeCheckedAt(new Date().toLocaleTimeString());
@@ -103,6 +108,9 @@ export default function StaffCourseSettings(){
         </span>}
         {bridge?.configured && <span className="block text-slate-500 text-xs mt-1">
           URL and secret present; Google Apps Script authorization must be tested separately.
+        </span>}
+        {bridgeProbe && <span className={"block text-xs mt-1 "+(bridgeProbe.connected?"text-green-700":"text-red-700")}>
+          Apps Script verification: {bridgeProbe.code} — {bridgeProbe.message}
         </span>}
         {bridgeError && <span className="block text-red-700 text-xs mt-1">{bridgeError}</span>}
         {bridgeCheckedAt && <span className="block text-slate-500 text-xs mt-1">Last checked: {bridgeCheckedAt}</span>}
