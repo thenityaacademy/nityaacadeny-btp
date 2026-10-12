@@ -8,8 +8,9 @@
 import { listStaffCourses } from "./worker-courses";
 import { defaultFormEditor, sanitizeFormEditor } from "../src/data/staffFormEditor";
 import { handleCourseLogo, setCourseLogoStatus } from "./worker-course-logos";
-import { driveReady, type DriveBridgeEnv } from "./worker-drive";
-type Env = {DB:D1Database} & DriveBridgeEnv;
+import { driveReady, driveRequest } from "./worker-drive";
+import { handleStaffPhoto, photoEnabled, cleanupExpiredStaffPhotos, type PhotoEnv } from "./worker-photo";
+type Env = PhotoEnv;
 type StaffRow = {id:string;full_name:string;password_hash:string;active:number};
 const COOKIE="nitya_staff_session";
 const SESSION_MS=8*60*60*1000;
@@ -175,15 +176,41 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
       scholarshipTerms:data.scholarshipTerms||"",
       courses:courses.filter(x=>x.active),
       formEditor,
-      photoStorageEnabled:false,
+      photoStorageEnabled:photoEnabled(env),
       submissionsEnabled:false,
-      note:"Form preview only. Final submit, image upload, PDF and WhatsApp are not enabled."
+      note:photoEnabled(env)
+        ?"Staff Photo Draft upload is active. Final form submission, PDF and WhatsApp remain disabled."
+        :"Form preview only. Final form submission, private photo upload, PDF and WhatsApp are not enabled."
     });
   }
-  // All other staff endpoints fail closed. No form/Drive/Sheets routes in Phase 2.
+  if(path.startsWith("/api/staff/photo/")){
+    const staff=await getStaffSession(request,env);
+    if(!staff)return out({error:"Staff login required"},401);
+    return handleStaffPhoto(request,env,staff);
+  }
+  // All other staff endpoints fail closed. No Admission/Scholarship or PDF submission APIs.
   if(path.startsWith("/api/staff/"))return out({error:"This Staff Portal feature is not yet enabled."},503);
 
   if(!isAdmin)return out({error:"Admin authentication required"},403);
+  if(path==="/api/admin/staff/photo-ready"&&request.method==="GET"){
+    return out({configured:driveReady(env),
+      enabled:photoEnabled(env),
+      note:"Private photo drafts are stored for at most 48 hours. Only synthetic images should be used for Preview tests."});
+  }
+  if(path==="/api/admin/staff/photo-smoke-test"&&post){
+    if(!driveReady(env))return out({error:"Google Drive bridge not configured"},503);
+    try{
+      const r=await driveRequest(env,{action:"verifyStudentPhoto"});
+      return out({success:r.success===true,code:r.code||"PHOTO_TEST_OK"});
+    }catch(e){
+      const message=String(e instanceof Error?e.message:e);
+      return out({error:/Unsupported operation/i.test(message)?"Google Apps Script V3 has not been deployed.":"Private photo bridge failed. Check Apps Script Executions."},503);
+    }
+  }
+  if(path==="/api/admin/staff/photo-cleanup"&&post){
+    if(!driveReady(env))return out({error:"Google Drive bridge not configured"},503);
+    return out({success:true,...await cleanupExpiredStaffPhotos(env,20)});
+  }
   // Admin-controlled Course Extra Logos; private Google Drive bridge only.
   // These do NOT publish any student's data, trigger admissions, or create PDFs.
   if(path==="/api/admin/staff/drive-ready" && request.method==="GET"){
