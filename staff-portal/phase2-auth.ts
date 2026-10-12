@@ -8,8 +8,10 @@
 import { listStaffCourses } from "./worker-courses";
 import { defaultFormEditor, sanitizeFormEditor } from "../src/data/staffFormEditor";
 import { handleCourseLogo, setCourseLogoStatus } from "./worker-course-logos";
-import { driveReady, type DriveBridgeEnv } from "./worker-drive";
-type Env = {DB:D1Database} & DriveBridgeEnv;
+import { driveReady, driveRequest } from "./worker-drive";
+import { handleStaffPhoto, photoEnabled, cleanupExpiredStaffPhotos, type PhotoEnv } from "./worker-photo";
+import { handleStaffApplication } from "./worker-submission";
+type Env = PhotoEnv & {STAFF_SUBMISSIONS_ENABLED?:string};
 type StaffRow = {id:string;full_name:string;password_hash:string;active:number};
 const COOKIE="nitya_staff_session";
 const SESSION_MS=8*60*60*1000;
@@ -148,8 +150,12 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
     ).bind(staff.id).all<{kind:string;n:number}>();
     const total=(kind:string)=>records.results.find(r=>r.kind===kind)?.n||0;
     return out({staff,counts:{admissions:total("admission"),scholarships:total("scholarship")},
-      features:{admissionsEnabled:false,scholarshipsEnabled:false,pdfEnabled:false},
-      notice:"Admission, Scholarship and PDF features will be enabled after separate security and form tests."});
+      features:{admissionsEnabled:env.STAFF_SUBMISSIONS_ENABLED==="true"&&photoEnabled(env),
+        scholarshipsEnabled:env.STAFF_SUBMISSIONS_ENABLED==="true"&&photoEnabled(env),
+        pdfEnabled:env.STAFF_SUBMISSIONS_ENABLED==="true"&&photoEnabled(env)},
+      notice:env.STAFF_SUBMISSIONS_ENABLED==="true"&&photoEnabled(env)
+        ?"Admission/Scholarship forms can be submitted. Confirm every detail and student consent."
+        :"Final form submission remains locked until secure tests are complete."});
   }
 
 
@@ -175,15 +181,75 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
       scholarshipTerms:data.scholarshipTerms||"",
       courses:courses.filter(x=>x.active),
       formEditor,
-      photoStorageEnabled:false,
-      submissionsEnabled:false,
-      note:"Form preview only. Final submit, image upload, PDF and WhatsApp are not enabled."
+      photoStorageEnabled:photoEnabled(env),
+      submissionsEnabled:photoEnabled(env)&&env.STAFF_SUBMISSIONS_ENABLED==="true",
+      note:photoEnabled(env)&&env.STAFF_SUBMISSIONS_ENABLED==="true"
+        ?"Final forms can be submitted after validation. PDF and Sheet statuses are shown per record."
+        :photoEnabled(env)
+          ?"Private Photo Draft upload is active. Final Form Submission still requires separate tests."
+          :"Preview only. Final forms and private Photo uploads are disabled."
     });
   }
-  // All other staff endpoints fail closed. No form/Drive/Sheets routes in Phase 2.
+  if(path.startsWith("/api/staff/photo/")){
+    const staff=await getStaffSession(request,env);
+    if(!staff)return out({error:"Staff login required"},401);
+    return handleStaffPhoto(request,env,staff);
+  }
+  if(path==="/api/staff/application/submit"&&post||
+     path==="/api/staff/application/retry"&&post||
+     path==="/api/staff/applications"&&request.method==="GET"||
+     path.startsWith("/api/staff/pdf/")&&request.method==="GET"){
+    const staff=await getStaffSession(request,env);
+    if(!staff)return out({error:"Staff login required"},401);
+    return handleStaffApplication(request,env,staff);
+  }
+  // Other routes remain denied. Final Admission/Scholarship APIs are independently gated.
   if(path.startsWith("/api/staff/"))return out({error:"This Staff Portal feature is not yet enabled."},503);
 
   if(!isAdmin)return out({error:"Admin authentication required"},403);
+  if(path==="/api/admin/staff/submission-readiness"&&request.method==="GET"){
+    const seq=await env.DB.prepare(
+      "SELECT prefix,next_number,end_number FROM registration_sequences WHERE sequence_key='scholarship'"
+    ).first<{prefix:string;next_number:number;end_number:number}>();
+    return out({bridgeConfigured:driveReady(env),photoEnabled:photoEnabled(env),
+      submissionsEnabled:env.STAFF_SUBMISSIONS_ENABLED==="true",
+      scholarshipSeriesConfigured:!!seq&&seq.next_number<=seq.end_number,
+      scholarshipSeries:seq?{prefix:seq.prefix,nextNumber:seq.next_number,lastNumber:seq.end_number}:null,
+      warning:"Only test with synthetic students until real PDF and Google Sheets flow is verified."});
+  }
+  if(path==="/api/admin/staff/pdf-smoke-test"&&post){
+    if(!driveReady(env))return out({error:"Google Drive bridge missing"},503);
+    try{
+      const r=await driveRequest(env,{action:"verifyStudentPdfV4"});
+      if(r.code!=="STAFF_PDF_V4_READY")throw Error("PDF smoke test incomplete");
+      return out({success:true,code:r.code,tests:r.tests||[]});
+    }catch(e){return out({error:"PDF test failed. Check Apps Script V4 deployment and Executions."},503);}
+  }
+  if(path==="/api/admin/staff/photo-ready"&&request.method==="GET"){
+    return out({configured:driveReady(env),
+      enabled:photoEnabled(env),
+      note:"Private photo drafts are stored for at most 48 hours. Only synthetic images should be used for Preview tests."});
+  }
+  if(path==="/api/admin/staff/photo-smoke-test"&&post){
+    if(!driveReady(env))return out({error:"Google Drive bridge not configured"},503);
+    try{
+      const r=await driveRequest(env,{action:"verifyStudentPhoto"});
+      return out({success:r.success===true,code:r.code||"PHOTO_TEST_OK"});
+    }catch(e){
+      const message=String(e instanceof Error?e.message:e);
+      return out({error:/Unsupported operation/i.test(message)?"Google Apps Script V3 has not been deployed.":"Private photo bridge failed. Check Apps Script Executions."},503);
+    }
+  }
+  if(path==="/api/admin/staff/photo-cleanup"&&post){
+    if(!driveReady(env))return out({error:"Google Drive bridge not configured"},503);
+    let orphaned=0;
+    try{
+      const remote=await driveRequest(env,{action:"cleanupStudentPhotoDrafts"});
+      orphaned=Number(remote.removed||0);
+    }catch(e){console.error("Student photo orphan cleanup failed",String(e).slice(0,120));}
+    const local=await cleanupExpiredStaffPhotos(env,20);
+    return out({success:true,...local,orphaned});
+  }
   // Admin-controlled Course Extra Logos; private Google Drive bridge only.
   // These do NOT publish any student's data, trigger admissions, or create PDFs.
   if(path==="/api/admin/staff/drive-ready" && request.method==="GET"){

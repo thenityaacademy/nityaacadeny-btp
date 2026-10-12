@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Settings, ClipboardList, BookOpen, RefreshCw, ShieldCheck, Save } from "lucide-react";
+import StaffPhotoStorageAdmin from "./StaffPhotoStorageAdmin";
 
 type Course = {
   id:string;name:string;category:string;active:boolean;
@@ -110,7 +111,7 @@ export default function StaffPortalSetupAdmin(){
       </div>
       <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm text-blue-900 flex gap-2">
         <ShieldCheck size={20} className="shrink-0"/>
-        Student form submissions, PDF generation, and WhatsApp sending remain OFF. Private Course Extra Logo uploads can be enabled after the Production Google Drive bridge is configured.
+        Student form submissions, PDF generation and WhatsApp sending remain OFF. Student Photo upload remains disabled until the V3 Apps Script private-folder test and photo database migration are complete.
       </div>
       {status&&<p className="text-sm mt-3 text-slate-700">
         Staff Accounts: <strong>{status.staffAccounts}</strong> · Staff Form Records: <strong>{status.staffApplications}</strong> ·
@@ -120,6 +121,7 @@ export default function StaffPortalSetupAdmin(){
       {error&&<p role="alert" className="mt-3 rounded-lg border bg-red-50 text-red-700 p-3 text-sm">{error}</p>}
       {notice&&<p role="status" className="mt-3 rounded-lg border bg-green-50 text-green-800 p-3 text-sm">{notice}</p>}
     </div>
+    <StaffPhotoStorageAdmin />
     <div className="rounded-2xl bg-white border p-5 md:p-6 space-y-4">
       <h3 className="text-xl font-bold flex items-center gap-2"><BookOpen size={21}/>Admission Course Dropdown</h3>
       <p className="text-sm text-slate-600">

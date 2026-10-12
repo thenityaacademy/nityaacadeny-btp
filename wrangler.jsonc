@@ -16,7 +16,8 @@
   ],
   "previews": {
     "vars": {
-      "STAFF_SUBMISSIONS_ENABLED": "false"
+      "STAFF_SUBMISSIONS_ENABLED": "false",
+      "STAFF_PHOTO_UPLOADS_ENABLED": "true"
     },
     "d1_databases": [
       {
@@ -24,6 +25,11 @@
         "database_name": "nitya-academy-staff-test-db",
         "database_id": "e05ec60a-421b-4283-8ed6-2dcbcb5a1c11"
       }
+    ]
+  },
+  "triggers": {
+    "crons": [
+      "15 3 * * *"
     ]
   }
 }
