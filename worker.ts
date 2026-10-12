@@ -1,3 +1,4 @@
+import { handlePhaseTwo } from "./staff-portal/phase2-auth";
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
@@ -303,44 +304,12 @@ export default {
       );
     }
 
-    // -------- PHASE 1 STAFF PORTAL: READ-ONLY ADMIN AREA --------
-    // The existing signed admin session is the only authorization mechanism.
-    // All Staff Portal writes and Staff Login are deliberately disabled.
-    if (url.pathname.startsWith("/api/staff/") ||
-        url.pathname.startsWith("/api/admin/staff/")) {
-      const headers = {"Cache-Control": "private, no-store"};
-      if (url.pathname === "/api/admin/staff/phase1-overview" &&
-          request.method === "GET") {
-        const allowed = !!env.ADMIN_PASSWORD &&
-          await verifySession(request, env.ADMIN_PASSWORD);
-        if (!allowed) {
-          return Response.json({error: "Admin authentication required"},
-            {status: 401, headers});
-        }
-        try {
-          const results = await Promise.all([
-            env.DB.prepare("SELECT COUNT(*) AS n FROM staff").first<{n:number}>(),
-            env.DB.prepare("SELECT COUNT(*) AS n FROM student_applications").first<{n:number}>(),
-            env.DB.prepare("SELECT COUNT(*) AS n FROM staff_courses WHERE extra_logo_active=1").first<{n:number}>()
-          ]);
-          return Response.json({
-            phase: "phase1",
-            status: "read_only",
-            staffAccounts: Number(results[0]?.n ?? 0),
-            staffApplications: Number(results[1]?.n ?? 0),
-            extraLogosActive: Number(results[2]?.n ?? 0),
-            staffLoginEnabled: false,
-            staffSubmissionsEnabled: false,
-            googleDriveProductionEnabled: false
-          }, {headers});
-        } catch (error) {
-          console.error("Read-only staff status unavailable", error);
-          return Response.json({error:"Staff status temporarily unavailable"},
-            {status:503,headers});
-        }
-      }
-      return Response.json({error:"Staff Portal feature is not yet enabled"},
-        {status:503,headers});
+    // Phase 2 allowlisted Staff API; all unfinished Staff features fail closed.
+    if(url.pathname.startsWith("/api/staff/") ||
+       url.pathname.startsWith("/api/admin/staff/")) {
+      const isAdmin=!!env.ADMIN_PASSWORD && await verifySession(request,env.ADMIN_PASSWORD);
+      const response=await handlePhaseTwo(request,env,isAdmin);
+      if(response)return response;
     }
 
     // ---------------- ADMISSION FORM ----------------
