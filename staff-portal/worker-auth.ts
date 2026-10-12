@@ -111,6 +111,16 @@ export async function handleStaffAuth(request: Request, env: Env, isAdmin: boole
     if(!staff) return json({error:"Unauthorized"},401);
     return saveStaffApplication(request,env,staff,pathname.endsWith("/admission")?"admission":"scholarship");
   }
+  if(pathname==="/api/admin/staff/bridge-status" && request.method==="GET") {
+    if(!isAdmin) return json({error:"Admin required"},403);
+    // Report only boolean readiness; never expose Google Apps Script URL or the secret.
+    return json({
+      configured:driveReady(env),
+      urlConfigured:!!env.STAFF_SHEETS_URL,
+      secretConfigured:!!env.STAFF_SHEETS_SECRET,
+      status:driveReady(env)?"configured":"missing_binding"
+    });
+  }
   if(pathname==="/api/admin/staff/course-logo" && ["POST","GET","DELETE"].includes(request.method)) {
     if(!isAdmin) return json({error:"Admin required"},403);
     return handleCourseLogo(request,env);
