@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { ShieldCheck, Users, FileText, Image, LockKeyhole, RefreshCw } from "lucide-react";
 
 type Overview = {
-  phase: "phase1";
-  status: "read_only";
+  phase: "phase2";
+  status: "login_active";
   staffAccounts: number;
   staffApplications: number;
   extraLogosActive: number;
-  staffLoginEnabled: false;
+  staffLoginEnabled: true;
   staffSubmissionsEnabled: false;
   googleDriveProductionEnabled: false;
 };
@@ -20,14 +20,14 @@ export default function StaffPhaseOneAdmin({ view }: { view: "management" | "set
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/admin/staff/phase1-overview", {
+      const response = await fetch("/api/admin/staff/phase2-overview", {
         method: "GET",
         credentials: "include",
         cache: "no-store"
       });
       if (!response.ok) throw new Error("Could not load the protected Staff Portal status.");
       const info = await response.json() as Overview;
-      if (info.phase !== "phase1" || info.status !== "read_only") {
+      if (info.phase !== "phase2" || info.status !== "login_active") {
         throw new Error("Unexpected Staff Portal release configuration.");
       }
       setData(info);
@@ -47,7 +47,7 @@ export default function StaffPhaseOneAdmin({ view }: { view: "management" | "set
             {view === "management" ? "Staff Management" : "Staff Portal Settings"}
           </h2>
           <p className="mt-1 text-sm text-slate-600">
-            Phase 1 – Safe Admin Integration. Existing website features are unchanged.
+            Phase 2 – Protected Staff Login is active. Existing website content is unchanged.
           </p>
         </div>
         <button type="button" disabled={loading} onClick={() => void load()}
@@ -57,8 +57,7 @@ export default function StaffPhaseOneAdmin({ view }: { view: "management" | "set
       </div>
       <div className="mt-4 flex items-start gap-2 rounded-xl bg-blue-50 p-4 text-sm text-blue-900 border border-blue-100">
         <ShieldCheck size={20} className="shrink-0" />
-        <p><strong>Read-only release:</strong> Staff Login, account creation, Admission/Scholarship submissions,
-          PDFs and Google Drive uploads are intentionally disabled on the live website until each phase is tested.</p>
+        <p><strong>Controlled release:</strong> Staff Login and Admin-only account management are enabled. Admission/Scholarship submissions, PDFs and Google Drive uploads are still disabled until later phases pass testing.</p>
       </div>
       {loading && <p role="status" className="mt-4 text-sm text-slate-600">Checking live database...</p>}
       {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
@@ -85,7 +84,7 @@ export default function StaffPhaseOneAdmin({ view }: { view: "management" | "set
         <LockKeyhole size={18} /> Upcoming activation
       </h3>
       <p className="text-sm text-slate-600 mt-2">
-        Phase 2: protected Staff Login and account management.
+        Phase 2: protected Staff Login and account management are active.
         Phase 3: validated Admission/Scholarship forms.
         Phase 4: PDF generation, Drive upload and WhatsApp sharing.
         Each feature will require separate tests before activation.
