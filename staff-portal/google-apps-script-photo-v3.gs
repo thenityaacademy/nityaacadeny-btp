@@ -192,18 +192,22 @@ function getStudentPhoto_(p){
  return {success:true,mime:file.getMimeType(),base64:Utilities.base64Encode(bytes)};
 }
 function verifyStudentPhotoBridge_(){
- // No real student data or saved file. Synthetic photo is always trashed.
- const folder=photoDraftFolder_("admission");
- const id=Utilities.getUuid();
- const filename=photoDraftName_(id);
+ // No real student data or saved file. Synthetic photos are always trashed.
  const synthetic="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9wfPkAAAAASUVORK5CYII=";
- let file=null;
- try{
-   file=folder.createFile(Utilities.newBlob(Utilities.base64Decode(synthetic),"image/png",filename));
-   if(!inFolder_(file,folder.getId()))throw Error("Student photo folder cannot be written");
-   return {success:true,code:"STUDENT_PHOTO_V3_READY",
-     message:"Private photo folder write/read verified. Synthetic test file trashed."};
- }finally{if(file)file.setTrashed(true);}
+ const checked=[];
+ ["admission","scholarship"].forEach(function(type){
+   const folder=photoDraftFolder_(type);
+   const id=Utilities.getUuid();
+   const filename=photoDraftName_(id);
+   let file=null;
+   try{
+     file=folder.createFile(Utilities.newBlob(Utilities.base64Decode(synthetic),"image/png",filename));
+     if(!inFolder_(file,folder.getId()))throw Error(type+" student photo folder cannot be written");
+     checked.push(type);
+   }finally{if(file)file.setTrashed(true);}
+ });
+ return {success:true,code:"STUDENT_PHOTO_V3_READY",folders:checked,
+   message:"Admission and Scholarship private photo folders verified; synthetic images trashed."};
 }
 
 function uploadCourseLogo_(p){
