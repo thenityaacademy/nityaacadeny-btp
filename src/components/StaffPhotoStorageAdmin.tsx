@@ -38,7 +38,7 @@ export default function StaffPhotoStorageAdmin(){
   setBusy("cleanup");setMessage("");setError("");
   try{
    const r=await api("/api/admin/staff/photo-cleanup","POST");
-   setMessage("Cleanup complete: "+r.cleaned+" of "+r.checked+" expired photo drafts removed.");
+   setMessage("Cleanup complete: "+r.cleaned+" database drafts and "+(r.orphaned||0)+" expired Drive draft files cleaned.");
   }catch(e){setError(e instanceof Error?e.message:"Cleanup failed");}
   finally{setBusy("");}
  };
