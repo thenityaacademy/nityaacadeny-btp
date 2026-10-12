@@ -9,6 +9,7 @@ export interface Env {
   STAFF_SHEETS_URL?:string;
   STAFF_SHEETS_SECRET?:string;
   STAFF_PHOTO_UPLOADS_ENABLED?:string;
+  STAFF_SUBMISSIONS_ENABLED?:string;
 }
 
 const ADMIN_USERNAME = "thenityaacademy@gmail.com";

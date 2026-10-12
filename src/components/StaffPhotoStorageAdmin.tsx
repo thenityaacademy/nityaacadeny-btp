@@ -33,6 +33,15 @@ export default function StaffPhotoStorageAdmin(){
   }catch(e){setError(e instanceof Error?e.message:"Photo storage test failed");}
   finally{setBusy("");}
  };
+ const testPdf=async()=>{
+  setBusy("pdf");setMessage("");setError("");
+  try{
+   const r=await api("/api/admin/staff/pdf-smoke-test","POST");
+   if(!r.success||r.code!=="STAFF_PDF_V4_READY")throw Error("PDF test did not complete");
+   setMessage("Success: Admission and Scholarship synthetic PDFs generated in their private Drive folders and trashed.");
+  }catch(e){setError(e instanceof Error?e.message:"PDF test failed. Check Apps Script V4 deployment");}
+  finally{setBusy("");}
+ };
  const cleanup=async()=>{
   if(!window.confirm("Remove up to 20 expired private Student Photo drafts? Photos still within their active 48-hour window will NOT be touched."))return;
   setBusy("cleanup");setMessage("");setError("");
@@ -69,6 +78,10 @@ export default function StaffPhotoStorageAdmin(){
    <button type="button" disabled={!!busy||!health?.configured} onClick={()=>void test()}
     className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-40">
     <ShieldCheck size={16}/>{busy==="test"?"Testing...":"Test Private Photo Drive (no real student)"}
+   </button>
+   <button type="button" disabled={!!busy||!health?.configured} onClick={()=>void testPdf()}
+    className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-40">
+    <ShieldCheck size={16}/>{busy==="pdf"?"Generating test PDFs...":"Test Admission + Scholarship PDF (synthetic)"}
    </button>
    <button type="button" disabled={!!busy||!health?.enabled} onClick={()=>void cleanup()}
     className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-40">

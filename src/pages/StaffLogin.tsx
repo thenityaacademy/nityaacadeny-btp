@@ -7,7 +7,7 @@ type Staff={id:string;name:string};
 type Dashboard={
   staff:Staff;
   counts:{admissions:number;scholarships:number};
-  features:{admissionsEnabled:false;scholarshipsEnabled:false;pdfEnabled:false};
+  features:{admissionsEnabled:boolean;scholarshipsEnabled:boolean;pdfEnabled:boolean};
   notice:string;
 };
 async function api(path:string,init?:RequestInit){
@@ -102,16 +102,20 @@ export default function StaffLogin(){
           <h2 className="text-xl font-bold">Welcome, {staff.name}</h2>
           <p className="text-sm text-slate-600 mt-1">Staff ID: <strong>{staff.id}</strong></p>
           <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
-            Staff Login and Course/Scholarship Form previews are available. Final Submit, Photo Upload, PDF and WhatsApp are disabled until their separate testing is complete.
+            {formConfig?.submissionsEnabled
+              ?"Staff Portal can submit validated forms, generate private PDFs and sync Google Sheets. Verify the consent and student details."
+              :formConfig?.photoStorageEnabled
+                ?"Staff Login and private Student Photo Draft Upload are available. Final Submit and PDFs remain disabled until tested."
+                :"Staff Login and Form Preview are available. Student data submission is currently disabled."}
           </div>
         </div>
         <div className="rounded-2xl border bg-white p-4 sm:p-5 flex flex-wrap gap-3">
           <button type="button" onClick={()=>setActiveTab("dashboard")}
             className={activeTab==="dashboard"?"pill-btn-primary":"rounded-xl border px-4 py-2"}>Dashboard</button>
           <button type="button" onClick={()=>setActiveTab("admission")}
-            className={activeTab==="admission"?"pill-btn-primary":"rounded-xl border px-4 py-2"}>Admission Form Preview</button>
+            className={activeTab==="admission"?"pill-btn-primary":"rounded-xl border px-4 py-2"}>{formConfig?.submissionsEnabled?"Student Admission Form":"Admission Form Preview"}</button>
           <button type="button" onClick={()=>setActiveTab("scholarship")}
-            className={activeTab==="scholarship"?"pill-btn-primary":"rounded-xl border px-4 py-2"}>ECCE Scholarship Preview</button>
+            className={activeTab==="scholarship"?"pill-btn-primary":"rounded-xl border px-4 py-2"}>{formConfig?.submissionsEnabled?"ECCE Scholarship Form":"ECCE Scholarship Preview"}</button>
         </div>
         {activeTab==="dashboard"?<>
           <a href={formConfig?.enquiryUrl||"https://docs.google.com/forms/d/e/1FAIpQLSfF9DJ9QMfzqFeB6LKYBT62-rPcwo8cCahNyZFW0oHDrYpLoA/viewform?usp=header"}
@@ -125,20 +129,21 @@ export default function StaffLogin(){
             <FileText size={24} className="text-blue-700"/>
             <p className="mt-3 text-sm text-slate-600">Your Admissions</p>
             <p className="text-3xl font-bold mt-1">{dashboard?.counts.admissions??0}</p>
-            <p className="text-xs text-slate-500 mt-2">Admission form is not enabled yet.</p>
+            <p className="text-xs text-slate-500 mt-2">{formConfig?.submissionsEnabled?"Staff admissions are recorded with unique application numbers.":"Admission submission is not enabled yet."}</p>
           </div>
           <div className="rounded-2xl bg-white border p-6">
             <GraduationCap size={24} className="text-blue-700"/>
             <p className="mt-3 text-sm text-slate-600">Your Scholarships</p>
             <p className="text-3xl font-bold mt-1">{dashboard?.counts.scholarships??0}</p>
-            <p className="text-xs text-slate-500 mt-2">Scholarship form is not enabled yet.</p>
+            <p className="text-xs text-slate-500 mt-2">{formConfig?.submissionsEnabled?"Scholarship registrations are saved with their configured number sequence.":"Scholarship submission is not enabled yet."}</p>
           </div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7">
           <h3 className="font-bold text-lg flex items-center gap-2"><Users size={20}/>Upcoming Staff Features</h3>
           <p className="text-sm text-slate-600 mt-2">
-            Daily Enquiry, Student Admission, ECCE Scholarship, PDF Download and WhatsApp sharing will be
-            enabled phase by phase after Admin approval.
+            {formConfig?.submissionsEnabled
+              ?"Admission, Scholarship, private Photo, PDF Download and WhatsApp sharing are available. WhatsApp delivery requires the staff member to complete the send."
+              :"Daily Enquiry, Student Admission, ECCE Scholarship, PDF and WhatsApp Sharing will be enabled after security testing and Admin approval."}
           </p>
         </div>
         </>:formConfig?<StaffApplicationPreview key={activeTab} kind={activeTab} staff={staff} config={formConfig}/>:
