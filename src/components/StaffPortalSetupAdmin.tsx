@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Settings, ClipboardList, BookOpen, RefreshCw, ShieldCheck, Save } from "lucide-react";
+import StaffCourseLogosAdmin from "./StaffCourseLogosAdmin";
+import StaffFormsEditorAdmin from "./StaffFormsEditorAdmin";
 
 type Course = {
   id:string;name:string;category:string;active:boolean;
@@ -110,7 +112,7 @@ export default function StaffPortalSetupAdmin(){
       </div>
       <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm text-blue-900 flex gap-2">
         <ShieldCheck size={20} className="shrink-0"/>
-        Admission and Scholarship submissions, PDF, WhatsApp sending, and Drive uploads remain OFF. Only Staff Login and Admin settings are enabled.
+        Student form submissions, PDF generation, and WhatsApp sending remain OFF. Private Course Extra Logo uploads can be enabled after the Production Google Drive bridge is configured.
       </div>
       {status&&<p className="text-sm mt-3 text-slate-700">
         Staff Accounts: <strong>{status.staffAccounts}</strong> · Staff Form Records: <strong>{status.staffApplications}</strong> ·
@@ -144,6 +146,8 @@ export default function StaffPortalSetupAdmin(){
         </div>:null;
       })}
     </div>
+    <StaffCourseLogosAdmin />
+    <StaffFormsEditorAdmin />
     <form onSubmit={saveSeries} className="rounded-2xl bg-white border p-5 md:p-6 space-y-4">
       <h3 className="text-xl font-bold flex items-center gap-2"><ClipboardList size={21}/> ECCE Scholarship Registration Series</h3>
       <p className="text-sm text-slate-600">
