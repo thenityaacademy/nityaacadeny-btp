@@ -54,6 +54,7 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
     <div>
       <h2 className="text-2xl font-bold">{kind === "admission" ? "Student Admission" : "ECCE Scholarship"} Form</h2>
       <p className="text-sm text-slate-600 mt-2">Staff Reference: <strong>{staff.name} ({staff.id})</strong> — verified by server</p>
+      <p className="text-sm text-red-700 mt-2 font-semibold">Demo only: do not enter any real student Aadhaar, phone, address or photo. No data is submitted or saved here.</p>
       <p className="text-sm text-amber-800 mt-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
         {config.submissionsEnabled
           ? "Staff Portal is accepting applications. Check all details carefully before final submission."
@@ -154,7 +155,7 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
         className="block w-full rounded-lg border border-slate-200 bg-slate-100 p-3 disabled:cursor-not-allowed"
         />
       <p className="text-sm text-amber-800">
-        "Photo upload and official PDF will be enabled after the secure Google Drive integration is tested."
+        Photo upload and official PDF will be enabled after the secure Google Drive integration is tested.
       </p>
     </section>
     {terms&&<p className="text-sm text-slate-600 whitespace-pre-wrap p-4 bg-slate-50 rounded-xl">{terms}</p>}
