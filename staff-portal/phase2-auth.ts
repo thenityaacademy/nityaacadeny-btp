@@ -149,6 +149,21 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
   if(path.startsWith("/api/staff/"))return out({error:"This Staff Portal feature is not yet enabled."},503);
 
   if(!isAdmin)return out({error:"Admin authentication required"},403);
+  if(path==="/api/admin/staff/phase2-overview"&&request.method==="GET"){
+    const [accounts,applications,logos]=await Promise.all([
+      env.DB.prepare("SELECT COUNT(*) AS n FROM staff").first<{n:number}>(),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM student_applications").first<{n:number}>(),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM staff_courses WHERE extra_logo_active=1").first<{n:number}>()
+    ]);
+    return out({phase:"phase2",status:"login_active",
+      staffAccounts:Number(accounts?.n||0),
+      staffApplications:Number(applications?.n||0),
+      extraLogosActive:Number(logos?.n||0),
+      staffLoginEnabled:true,
+      staffSubmissionsEnabled:false,
+      pdfEnabled:false,
+      googleDriveProductionEnabled:false});
+  }
   if(path==="/api/admin/staff/list"&&request.method==="GET"){
     const data=await env.DB.prepare(
       "SELECT id,full_name AS name,active,created_at,last_login_at FROM staff ORDER BY created_at DESC,id ASC"
