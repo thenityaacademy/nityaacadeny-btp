@@ -37,7 +37,9 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
     const cfg=fields[key];
     if(cfg && !cfg.visible)return null;
     const displayLabel=cfg?.label||label;
-    const mustFill=cfg?.required??required;
+    const conditionalRequired=(key==="practicalFee"&&values.practicalApplicable==="yes")||
+      (key==="referenceName"&&values.hasReference==="yes");
+    const mustFill=conditionalRequired || (cfg?.required??required);
     return <label key={key} className="block text-sm font-medium text-slate-700">{displayLabel}{mustFill?" *":""}
       <input name={key} className="mt-1 block w-full rounded-lg border border-slate-300 p-3 bg-white" type={type}
         required={mustFill} value={v(key)} inputMode={extras?.inputMode} maxLength={extras?.maxLength}
