@@ -17,7 +17,7 @@
   "previews": {
     "vars": {
       "STAFF_SUBMISSIONS_ENABLED": "false",
-      "STAFF_PHOTO_UPLOADS_ENABLED": "false"
+      "STAFF_PHOTO_UPLOADS_ENABLED": "true"
     },
     "d1_databases": [
       {
