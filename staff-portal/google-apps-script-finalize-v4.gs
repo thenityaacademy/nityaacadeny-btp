@@ -144,9 +144,97 @@ function finalizeStudentDocuments_(p){
   const pdfFolder=getFolder_(p.type==="admission"?"admissions":"scholarships","pdfs");
   const pdfName="Nitya Academy "+(p.type==="admission"?"Admission":"ECCE Scholarship")+" - "+p.formNumber+".pdf";
   let pdf=findInFolder_(pdfFolder,pdfName);
-  if(!pdf)pdf=buildPdf_(p,photo,null);
+  if(!pdf)pdf=buildStaffPdf_(p,photo,null);
   if(pdf.getMimeType()!==MimeType.PDF||pdf.getSize()<500)throw Error("Generated PDF is invalid");
   if(photo.getName()!==name)photo.setName(name);
   return {success:true,photoFileId:photo.getId(),pdfFileId:pdf.getId(),
     photoName:name,pdfName:pdfName};
+}
+
+function buildStaffPdf_(p,photoFile,existingPdf) {
+ if(existingPdf)return existingPdf;
+ const values=p.fields||{};
+ const folder=getFolder_(p.type==="admission"?"admissions":"scholarships","pdfs");
+ const fileName="Nitya Academy "+(p.type==="admission"?"Admission":"ECCE Scholarship")+" - "+p.formNumber+".pdf";
+ const doc=DocumentApp.create("TEMP - "+p.formNumber+" - "+p.recordId);
+ try{
+  const b=doc.getBody();
+  b.setMarginTop(32);b.setMarginBottom(32);b.setMarginLeft(36);b.setMarginRight(36);
+  addImage_(b,DriveApp.getFileById(DRIVE_FOLDERS.mainLogo).getBlob(),90);
+  if(p.courseLogoFileId){
+   const courseLogo=DriveApp.getFileById(p.courseLogoFileId);
+   if(!inFolder_(courseLogo,DRIVE_FOLDERS.logos))throw Error("Unrecognized course logo");
+   addImage_(b,courseLogo.getBlob(),70);
+  }
+  b.appendParagraph("NITYA ACADEMY, BHARATPUR")
+   .setHeading(DocumentApp.ParagraphHeading.HEADING1)
+   .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  b.appendParagraph("Near Ketan Gate, Sahyog Nagar, Bharatpur 321001 | 9680008384 | 9802813444")
+   .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  b.appendParagraph(p.type==="admission"?"STUDENT ADMISSION FORM":"ECCE SCHOLARSHIP REGISTRATION FORM")
+   .setHeading(DocumentApp.ParagraphHeading.HEADING2).setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  b.appendParagraph("Application / Registration No.: "+p.formNumber);
+  b.appendParagraph("Submission Date: "+p.createdAt);
+  addImage_(b,photoFile.getBlob(),105);
+  const labels={
+   studentName:"Student Name",fatherName:"Father Name",motherName:"Mother Name",dob:"Date of Birth",
+   gender:"Gender",aadhaar:"Aadhaar Number",mobile:"Mobile",whatsapp:"WhatsApp",email:"Email",
+   address:"Address",city:"City/Village",district:"District",state:"State",pin:"PIN Code",
+   passed10:"10th Passed",board10:"10th Board",year10:"10th Passing Year",percent10:"10th %",
+   passed12:"12th Passed",board12:"12th Board",year12:"12th Passing Year",percent12:"12th %",
+   lastQualification:"Last Qualification",lastBoard:"Last Board/University",lastYear:"Last Passing Year",
+   lastPercent:"Last Qualification %",course:"Course",session:"Session",
+   totalFees:"Total Fees (INR)",practicalApplicable:"Practical Fees?",practicalFee:"Practical Fee (INR)",
+   hasReference:"External Reference",referenceName:"Reference Name",registrationDate:"Registration Date",
+   examDate:"Exam Date",paymentMode:"Payment Mode",transactionRef:"Transaction Reference"
+  };
+  const lines=[];
+  Object.keys(labels).forEach(key=>{if(values[key]!==undefined&&String(values[key]).trim()!=="")
+   lines.push([labels[key],String(values[key]).slice(0,500)]);});
+  if(p.type==="scholarship")lines.push(["Registration Fee","INR 100"]);
+  lines.push(["Staff Reference",String(p.staffName||"")+" ("+String(p.staffId||"")+")"]);
+  const table=b.appendTable(lines);
+  for(let i=0;i<lines.length;i++)table.getRow(i).getCell(0).setBackgroundColor("#e9f2ff");
+  if(p.terms)b.appendParagraph("Terms & Conditions").setHeading(DocumentApp.ParagraphHeading.HEADING3);
+  if(p.terms)b.appendParagraph(String(p.terms).slice(0,10000));
+  b.appendParagraph("\nStudent / Guardian Signature: _____________________");
+  b.appendParagraph("For Nitya Academy: _____________________");
+  doc.saveAndClose();
+  const temp=DriveApp.getFileById(doc.getId());
+  const pdfBlob=temp.getAs(MimeType.PDF).setName(fileName);
+  return folder.createFile(pdfBlob);
+ }finally{
+  try{DriveApp.getFileById(doc.getId()).setTrashed(true);}catch(ignore){}
+ }
+}
+
+function getStudentPdfV4_(p){
+ if(!shortId_(p.fileId)||!["admission","scholarship"].includes(p.type))throw Error("Invalid PDF request");
+ const folder=getFolder_(p.type==="admission"?"admissions":"scholarships","pdfs");
+ const file=DriveApp.getFileById(p.fileId);
+ if(!inFolder_(file,folder.getId())||file.getMimeType()!==MimeType.PDF)
+  throw Error("PDF access denied");
+ const bytes=file.getBlob().getBytes();
+ if(bytes.length>8000000)throw Error("PDF exceeds delivery limit");
+ return {success:true,base64:Utilities.base64Encode(bytes),mime:"application/pdf"};
+}
+/** Verify PDF generation in both private folders without any Student data. */
+function verifyStudentPdfV4_(){
+ const sample="TESTONLY-"+Utilities.getUuid().replace(/-/g,"").slice(0,10);
+ const main=DriveApp.getFileById(DRIVE_FOLDERS.mainLogo);
+ const files=[],results=[];
+ try{
+  ["admission","scholarship"].forEach(function(type){
+   const args={type:type,recordId:Utilities.getUuid(),formNumber:sample+(type==="admission"?"ADM":"SCH"),
+    createdAt:new Date().toISOString(),staffName:"TEST SYSTEM",staffId:"TEST-STF",
+    fields:{studentName:"TEST ONLY",fatherName:"SAMPLE",aadhaar:"000000000000",
+      dob:"2000-01-01",gender:"other",course:"ECCE"},
+    terms:"TEST ONLY - NOT A REAL REGISTRATION."};
+   const file=buildStaffPdf_(args,main,null);
+   files.push(file);
+   if(file.getMimeType()!==MimeType.PDF||file.getSize()<500)throw Error("Invalid "+type+" PDF");
+   results.push({type:type,bytes:file.getSize()});
+  });
+  return {success:true,code:"STAFF_PDF_V4_READY",tests:results};
+ }finally{files.forEach(function(f){try{f.setTrashed(true);}catch(ignore){}});}
 }
