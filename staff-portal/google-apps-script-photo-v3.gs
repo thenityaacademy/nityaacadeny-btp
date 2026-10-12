@@ -210,6 +210,29 @@ function verifyStudentPhotoBridge_(){
    message:"Admission and Scholarship private photo folders verified; synthetic images trashed."};
 }
 
+/**
+ * Eliminate orphaned photo drafts even after a Worker timeout. Never touches
+ * permanent "Student Photo ..." files or course logos/PDFs.
+ */
+function cleanupStudentPhotoDrafts_(){
+ const cutoff=Date.now()-(48*60*60*1000);
+ const valid=/^Nitya Student Photo Draft [a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+ let scanned=0,removed=0;
+ ["admission","scholarship"].forEach(function(type){
+   const files=photoDraftFolder_(type).getFiles();
+   let scannedFolder=0;
+   while(files.hasNext()&&scannedFolder<2000&&removed<40){
+     const file=files.next();
+     scannedFolder++;scanned++;
+     if(valid.test(file.getName())&&file.getDateCreated().getTime()<cutoff){
+       file.setTrashed(true);
+       removed++;
+     }
+   }
+ });
+ return {success:true,scanned:scanned,removed:removed};
+}
+
 function uploadCourseLogo_(p){
  if(!p.photoBase64||!p.photoMime)throw Error("Logo image required");
  const name="Course logo "+String(p.courseId||"")+" "+Utilities.getUuid();
@@ -351,6 +374,7 @@ function doPost(e){
    case "getStudentPhoto":result=getStudentPhoto_(payload);break;
    case "deleteStudentPhoto":result=deleteStudentPhoto_(payload);break;
    case "verifyStudentPhoto":result=verifyStudentPhotoBridge_();break;
+   case "cleanupStudentPhotoDrafts":result=cleanupStudentPhotoDrafts_();break;
    case "uploadCourseLogo":result=uploadCourseLogo_(payload);break;
    case "getCourseLogo":result=getLogo_(payload);break;
    case "deleteCourseLogo":result=deleteLogo_(payload);break;
