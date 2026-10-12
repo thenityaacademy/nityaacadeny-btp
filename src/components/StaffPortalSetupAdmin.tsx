@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Settings, ClipboardList, BookOpen, RefreshCw, ShieldCheck, Save } from "lucide-react";
-import StaffCourseLogosAdmin from "./StaffCourseLogosAdmin";
-import StaffFormsEditorAdmin from "./StaffFormsEditorAdmin";
 
 type Course = {
   id:string;name:string;category:string;active:boolean;
@@ -146,8 +144,6 @@ export default function StaffPortalSetupAdmin(){
         </div>:null;
       })}
     </div>
-    <StaffCourseLogosAdmin />
-    <StaffFormsEditorAdmin />
     <form onSubmit={saveSeries} className="rounded-2xl bg-white border p-5 md:p-6 space-y-4">
       <h3 className="text-xl font-bold flex items-center gap-2"><ClipboardList size={21}/> ECCE Scholarship Registration Series</h3>
       <p className="text-sm text-slate-600">
