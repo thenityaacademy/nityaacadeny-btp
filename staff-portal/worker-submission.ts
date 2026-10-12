@@ -214,37 +214,43 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
   try{fields=await normalizedFields(env,kind,body.fields);}
   catch(e){return bad(e instanceof Error?e.message:"Invalid form fields");}
   const recordId=crypto.randomUUID();
-  let number="";
-  if(kind==="scholarship"){
-   const seq=await env.DB.prepare(
-    "UPDATE registration_sequences SET next_number=next_number+1 "+
-    "WHERE sequence_key='scholarship' AND next_number<=end_number "+
-    "RETURNING prefix,next_number-1 AS issued"
-   ).first<{prefix:string;issued:number}>();
-   if(!seq)return bad("Scholarship number range is not configured. Please contact Admin.",503);
-   number=seq.prefix+seq.issued;
-  }else{
-   number="NA-ADM-"+new Date().getUTCFullYear()+"-"+recordId.slice(0,8).toUpperCase();
-  }
+  // Reserve the Application/Scholarship number AND student record in one
+  // atomic D1 batch. No serial can be duplicated or consumed by a failed insert.
+  // The unique photo_draft_id also prevents accidental double submissions.
   const cents=kind==="scholarship"?10000:Math.round(Number(fields.totalFees)*100);
   try{
-   await env.DB.prepare(
-    "INSERT INTO student_applications"+
-    "(id,kind,form_number,staff_id,student_name,mobile,course_id,fields_json,"+
-    "payment_mode,fee_amount,sheet_sync_status,photo_draft_id,document_status) "+
-    "VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?,'pending')"
-   ).bind(recordId,kind,number,staff.id,fields.studentName,fields.mobile,
-    kind==="admission"?fields.course:"ecce",
-    JSON.stringify(fields),kind==="scholarship"?fields.paymentMode:null,cents,photoId).run();
+    const results=await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO student_applications"+
+        "(id,kind,form_number,staff_id,student_name,mobile,course_id,fields_json,"+
+        "payment_mode,fee_amount,sheet_sync_status,photo_draft_id,document_status) "+
+        "SELECT ?,?,CASE WHEN ?='admission' THEN prefix||printf('%04d',next_number) "+
+        "ELSE prefix||CAST(next_number AS TEXT) END,?,?,?,?,?,? ,?,'pending',?,'pending' "+
+        "FROM registration_sequences WHERE sequence_key=? AND next_number<=end_number"
+      ).bind(recordId,kind,kind,staff.id,fields.studentName,fields.mobile,
+        kind==="admission"?fields.course:"ecce",JSON.stringify(fields),
+        kind==="scholarship"?fields.paymentMode:null,cents,photoId,kind),
+      env.DB.prepare(
+        "UPDATE registration_sequences SET next_number=next_number+1 "+
+        "WHERE sequence_key=? AND next_number<=end_number"
+      ).bind(kind)
+    ]);
+    // If sequence is not configured or exhausted, both statements affect zero
+    // rows. In that case no student record is created and nothing is charged.
+    if((results[0].meta?.changes||0)!==1||(results[1].meta?.changes||0)!==1)
+      return bad(kind==="admission"?
+        "Admission application number range is exhausted or not configured. Contact Admin.":
+        "Scholarship registration number range is exhausted or not configured. Contact Admin.",503);
   }catch(e){
-   const dupe=await env.DB.prepare("SELECT id FROM student_applications WHERE photo_draft_id=?")
-    .bind(photoId).first<{id:string}>();
-   if(dupe){
-    const row=await ownedApplication(env,staff,dupe.id);
-    if(row)return json({...receipt(row),notice:"An application with this photo was already saved."},202);
-   }
-   console.error("Staff application insert failed",{kind});
-   return bad("Could not reserve application record. Contact Admin.",503);
+    const dupe=await env.DB.prepare(
+      "SELECT id FROM student_applications WHERE photo_draft_id=?"
+    ).bind(photoId).first<{id:string}>();
+    if(dupe){
+      const existing=await ownedApplication(env,staff,dupe.id);
+      if(existing)return json({...receipt(existing),notice:"This uploaded photo already belongs to a recorded application."},202);
+    }
+    console.error("Unable to reserve Staff application",String(e).slice(0,160));
+    return bad("Could not reserve a unique form number. Please refresh and contact Admin if this continues.",503);
   }
   const row=await ownedApplication(env,staff,recordId);
   if(!row)return bad("Application was reserved but could not be read. Contact Admin.",503);
