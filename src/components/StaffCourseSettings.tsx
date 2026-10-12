@@ -18,11 +18,18 @@ export default function StaffCourseSettings(){
   const [rev,setRev]=useState(0);
   const [bridge,setBridge]=useState<{configured:boolean;urlConfigured:boolean;secretConfigured:boolean}|null>(null);
   const [bridgeError,setBridgeError]=useState("");
+  const [checkingBridge,setCheckingBridge]=useState(false);
+  const [bridgeCheckedAt,setBridgeCheckedAt]=useState("");
   const checkBridge=async()=>{
+    setCheckingBridge(true);
     try{
       const status=await call("/api/admin/staff/bridge-status");
       setBridge(status);setBridgeError("");
     }catch(e){setBridgeError(e instanceof Error?e.message:"Connection check unavailable");}
+    finally{
+      setBridgeCheckedAt(new Date().toLocaleTimeString());
+      setCheckingBridge(false);
+    }
   };
   const reload=async()=>{
     setLoading(true);
@@ -98,8 +105,9 @@ export default function StaffCourseSettings(){
           URL and secret present; Google Apps Script authorization must be tested separately.
         </span>}
         {bridgeError && <span className="block text-red-700 text-xs mt-1">{bridgeError}</span>}
+        {bridgeCheckedAt && <span className="block text-slate-500 text-xs mt-1">Last checked: {bridgeCheckedAt}</span>}
       </div>
-      <button type="button" onClick={()=>void checkBridge()} className="border rounded-lg px-3 py-2 text-xs">Check Connection</button>
+      <button type="button" disabled={checkingBridge} onClick={()=>void checkBridge()} className="border rounded-lg px-3 py-2 text-xs disabled:opacity-50">{checkingBridge?"Checking...":"Check Connection"}</button>
     </div>
     {error&&<p className="text-red-700 text-sm border border-red-200 bg-red-50 rounded-lg p-3" role="alert">{error}</p>}
     {message&&<p className="text-green-700 text-sm" role="status">{message}</p>}
