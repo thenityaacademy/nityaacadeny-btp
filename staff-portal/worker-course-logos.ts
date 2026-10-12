@@ -51,7 +51,20 @@ export async function handleCourseLogo(request:Request,env:Env):Promise<Response
   const stored=await driveRequest(env,{action:"uploadCourseLogo",courseId:course.id,photoMime:image.type,photoBase64:toBase64(bytes)});
   logoId=String(stored.fileId||"");
   if(!logoId)throw Error("Drive returned no logo reference");
- }catch(e){console.error("Course logo upload error",e);return fail("Google Drive logo upload failed",503);}
+ }catch(e){
+  console.error("Course logo upload error",e);
+  // Safe, actionable categories only; never expose raw remote exceptions or secrets.
+  const reason=e instanceof Error?e.message:"";
+  if(/unauthorized/i.test(reason))
+    return fail("Google Apps Script rejected the secret. Check Script Properties and Preview STAFF_SHEETS_SECRET.",503);
+  if(/authorization|permission|scope|access denied|not authorized/i.test(reason))
+    return fail("Apps Script lacks Google Drive access. Authorize Drive permissions in the Apps Script project.",503);
+  if(/folder|not found|does not exist|invalid destination/i.test(reason))
+    return fail("Google Drive destination folder cannot be accessed. Verify the configured private folder.",503);
+  if(/JSON|<!doctype|Unexpected token/i.test(reason))
+    return fail("Apps Script returned an unexpected response. Verify Web App deployment access.",503);
+  return fail("Google Drive logo upload failed. Open Apps Script Executions and check details.",503);
+ }
  const old=await oldLogo(env,course.id);
  try{
   await env.DB.prepare("INSERT INTO staff_courses(course_id,course_name,active,extra_logo_drive_id,extra_logo_active) VALUES (?,?,?,?,1) ON CONFLICT(course_id) DO UPDATE SET course_name=excluded.course_name,extra_logo_drive_id=excluded.extra_logo_drive_id,extra_logo_active=1").bind(course.id,course.name,course.active?1:0,logoId).run();
