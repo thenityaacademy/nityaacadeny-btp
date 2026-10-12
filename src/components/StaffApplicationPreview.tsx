@@ -125,7 +125,7 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
   const downloadPdf=()=>{if(receipt?.pdfUrl)window.open(receipt.pdfUrl,"_blank","noopener,noreferrer");};
   const shareWhatsApp=async()=>{
     if(!receipt)return;
-    const recipient=(recipientNumber||values.whatsapp||values.mobile||receipt.mobile||"").replace(/\\D/g,"");
+    const recipient=(recipientNumber||values.whatsapp||values.mobile||receipt.mobile||"").replace(/\D/g,"");
     if(recipient.length!==10||!/^[6-9]/.test(recipient)){
       setSubmitError("Please enter a valid 10-digit Indian WhatsApp number.");
       return;
@@ -375,7 +375,7 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
       {receipt.notice&&<p className="text-sm text-amber-900">{receipt.notice}</p>}
       <label className="block text-sm">WhatsApp recipient (10-digit mobile; optional override)
         <input type="tel" inputMode="numeric" pattern="[6-9][0-9]{9}" maxLength={10}
-          value={recipientNumber} onChange={e=>setRecipientNumber(e.target.value.replace(/\\D/g,"").slice(0,10))}
+          value={recipientNumber} onChange={e=>setRecipientNumber(e.target.value.replace(/\D/g,"").slice(0,10))}
           placeholder={values.whatsapp||values.mobile||receipt.mobile}
           className="mt-1 block rounded-lg border bg-white px-3 py-2 w-full sm:max-w-xs"/>
       </label>
