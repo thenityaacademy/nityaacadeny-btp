@@ -209,7 +209,13 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
   }
   if(path==="/api/admin/staff/photo-cleanup"&&post){
     if(!driveReady(env))return out({error:"Google Drive bridge not configured"},503);
-    return out({success:true,...await cleanupExpiredStaffPhotos(env,20)});
+    let orphaned=0;
+    try{
+      const remote=await driveRequest(env,{action:"cleanupStudentPhotoDrafts"});
+      orphaned=Number(remote.removed||0);
+    }catch(e){console.error("Student photo orphan cleanup failed",String(e).slice(0,120));}
+    const local=await cleanupExpiredStaffPhotos(env,20);
+    return out({success:true,...local,orphaned});
   }
   // Admin-controlled Course Extra Logos; private Google Drive bridge only.
   // These do NOT publish any student's data, trigger admissions, or create PDFs.
