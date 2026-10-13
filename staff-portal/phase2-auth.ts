@@ -146,7 +146,7 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
     const staff=await getStaffSession(request,env);
     if(!staff)return out({error:"Staff login required"},401);
     const records=await env.DB.prepare(
-      "SELECT kind,COUNT(*) AS n FROM student_applications WHERE staff_id=? GROUP BY kind"
+      "SELECT kind,COUNT(*) AS n FROM student_applications WHERE staff_id=? AND staff_hidden_at IS NULL GROUP BY kind"
     ).bind(staff.id).all<{kind:string;n:number}>();
     const total=(kind:string)=>records.results.find(r=>r.kind===kind)?.n||0;
     return out({staff,counts:{admissions:total("admission"),scholarships:total("scholarship")},
@@ -197,6 +197,10 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
   }
   if(path==="/api/staff/application/submit"&&post||
      path==="/api/staff/application/retry"&&post||
+     path==="/api/staff/application/details"&&post||
+     path==="/api/staff/application/update"&&post||
+     path==="/api/staff/application/hide"&&post||
+     path==="/api/staff/application/restore"&&post||
      path==="/api/staff/application/pdf-download"&&post||
      path==="/api/staff/applications"&&request.method==="GET"||
      path.startsWith("/api/staff/pdf/")&&request.method==="GET"){
