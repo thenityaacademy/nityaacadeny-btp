@@ -321,7 +321,7 @@ function buildStaffPdf_(p,photoFile,existingPdf){
   // Google Docs sometimes adds an overflow sheet silently. Prevent releasing
   // a multipage registration when the form is required to be one A4 sheet.
   const rawPdf=pdfBlob.getDataAsString("ISO-8859-1");
-  const pageObjects=(rawPdf.match(/\\/Type\\s*\\/Page\\b/g)||[]).length;
+  const pageObjects=(rawPdf.match(/\/Type\s*\/Page\b/g)||[]).length;
   if(pageObjects>1)throw Error("PDF layout overflow: generated "+pageObjects+" pages instead of one A4 page. Check field lengths/template.");
   const pdf=folder.createFile(pdfBlob);
   if(pdf.getMimeType()!==MimeType.PDF||pdf.getSize()<500)throw Error("Generated PDF invalid");
