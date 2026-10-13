@@ -14,7 +14,7 @@ type Kind="admission"|"scholarship";
 type DocState="pending"|"ready";
 type Stored={id:string;kind:Kind;form_number:string;staff_id:string;student_name:string;mobile:string;fields_json:string;
   photo_drive_id:string|null;pdf_drive_id:string|null;photo_draft_id:string;document_status:DocState;
-  sheet_sync_status:string;created_at:string};
+  sheet_sync_status:string;created_at:string;staff_hidden_at:string|null;revision_number:number;revised_at:string|null};
 const json=(data:unknown,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"private,no-store","X-Content-Type-Options":"nosniff"}});
 const bad=(message:string,status=400)=>json({error:message},status);
 const idRE=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -105,20 +105,20 @@ async function normalizedFields(env:WorkflowEnv,kind:Kind,input:unknown){
 async function ownedApplication(env:WorkflowEnv,staff:StaffIdentity,recordId:string){
  return env.DB.prepare(
   "SELECT id,kind,form_number,staff_id,student_name,mobile,fields_json,"+
-  "photo_drive_id,pdf_drive_id,photo_draft_id,document_status,sheet_sync_status,created_at "+
+  "photo_drive_id,pdf_drive_id,photo_draft_id,document_status,sheet_sync_status,created_at,staff_hidden_at,revision_number,revised_at "+
   "FROM student_applications WHERE id=? AND staff_id=?"
  ).bind(recordId,staff.id).first<Stored>();
 }
 async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
  const fields=JSON.parse(row.fields_json) as Record<string,string>;
  let photoFileId=row.photo_drive_id||"",pdfFileId=row.pdf_drive_id||"";
- if(!pdfFileId){
+ if(!pdfFileId||row.document_status!=="ready"){
   const draft=await env.DB.prepare(
    "SELECT id,drive_file_id,mime,status,expires_at FROM staff_photo_drafts WHERE id=? AND staff_id=? AND kind=?"
   ).bind(row.photo_draft_id,staff.id,row.kind).first<{
    id:string;drive_file_id:string|null;mime:string;status:string;expires_at:string;
   }>();
-  if(!draft||!draft.drive_file_id||draft.status!=="ready")
+  if((!draft||!draft.drive_file_id||draft.status!=="ready")&&!photoFileId)
    throw Error("Photo draft unavailable. Contact Admin to recover the existing application.");
   const logo=row.kind==="admission"?
    await env.DB.prepare("SELECT extra_logo_drive_id,extra_logo_active FROM staff_courses WHERE course_id=?")
@@ -127,29 +127,32 @@ async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
    "SELECT setting_value FROM portal_settings WHERE setting_key=?"
   ).bind(row.kind==="admission"?"admissionTerms":"scholarshipTerms")
    .first<{setting_value:string}>();
+  const regenerating=!!pdfFileId&&row.document_status!=="ready";
   const doc=await driveRequest(env,{
-   action:"finalizeStudentDocuments",type:row.kind,recordId:row.id,formNumber:row.form_number,
-   createdAt:row.created_at,photoId:row.photo_draft_id,photoFileId:draft.drive_file_id,
-   photoMime:draft.mime,fields:{...fields,course:fields.courseName||fields.course},staffId:staff.id,staffName:staff.name,
+   action:regenerating?"reviseStudentDocuments":"finalizeStudentDocuments",type:row.kind,recordId:row.id,formNumber:row.form_number,
+   createdAt:row.created_at,photoId:row.photo_draft_id,photoFileId:photoFileId||draft?.drive_file_id,
+   existingPdfFileId:regenerating?pdfFileId:null,revisionNumber:row.revision_number,
+   photoMime:draft?.mime||null,fields:{...fields,course:fields.courseName||fields.course},staffId:staff.id,staffName:staff.name,
    terms:terms?.setting_value||"",
    courseLogoFileId:logo?.extra_logo_active===1?logo.extra_logo_drive_id:null
   });
   photoFileId=String(doc.photoFileId||"");
   pdfFileId=String(doc.pdfFileId||"");
   if(!photoFileId||!pdfFileId)throw Error("PDF storage returned an incomplete reference");
-  await env.DB.prepare(
+  const savedPdf=await env.DB.prepare(
    "UPDATE student_applications SET photo_drive_id=?,pdf_drive_id=?,document_status='ready',"+
-   "document_last_error=NULL WHERE id=? AND staff_id=?"
-  ).bind(photoFileId,pdfFileId,row.id,staff.id).run();
+   "document_last_error=NULL WHERE id=? AND staff_id=? AND revision_number=?"
+  ).bind(photoFileId,pdfFileId,row.id,staff.id,row.revision_number).run();
+  if(savedPdf.meta?.changes!==1)throw Error("Form revision changed during PDF generation. Refresh and retry.");
   // This ID now belongs to permanent application; do not let expiry cleanup trash it.
-  await env.DB.prepare("DELETE FROM staff_photo_drafts WHERE id=? AND staff_id=?")
+  if(draft)await env.DB.prepare("DELETE FROM staff_photo_drafts WHERE id=? AND staff_id=?")
    .bind(row.photo_draft_id,staff.id).run();
  }
  if(row.sheet_sync_status!=="synced"){
   try{
    const sheet=await driveRequest(env,{
     action:"upsert",recordId:row.id,type:row.kind,formNumber:row.form_number,
-    createdAt:row.created_at,studentName:row.student_name,mobile:row.mobile,
+    createdAt:row.created_at,studentName:fields.studentName||row.student_name,mobile:fields.mobile||row.mobile,
     staffId:staff.id,staffName:staff.name,fields:{...fields,course:fields.courseName||fields.course,termsAccepted:"Yes"},
     photoFileId,pdfFileId
    });
@@ -173,12 +176,13 @@ function receipt(row:Stored){
    studentName:row.student_name,mobile:row.mobile,
    pdfReady:row.document_status==="ready"&&!!row.pdf_drive_id,
    pdfUrl:row.document_status==="ready"&&row.pdf_drive_id?"/api/staff/pdf/"+row.id:null,
-   sheetStatus:row.sheet_sync_status,documentStatus:row.document_status};
+   sheetStatus:row.sheet_sync_status,documentStatus:row.document_status,
+   revisionNumber:row.revision_number};
 }
 async function serveStaffPdf(env:WorkflowEnv,staff:StaffIdentity,id:string):Promise<Response>{
   if(!idRE.test(id))return bad("Invalid PDF reference",400);
   const row=await ownedApplication(env,staff,id);
-  if(!row)return bad("PDF not found",404);
+  if(!row||row.staff_hidden_at)return bad("PDF not found in active Staff forms",404);
   if(row.document_status!=="ready"||!row.pdf_drive_id)return bad("PDF is not ready",404);
   try{
    const response=await driveRequest(env,{action:"getPdf",type:row.kind,fileId:row.pdf_drive_id});
@@ -204,6 +208,100 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
   let body:Record<string,unknown>;
   try{const raw=await request.text();if(raw.length>20000)throw Error("Too large");body=JSON.parse(raw);}
   catch{return bad("Invalid form submission",400);}
+  if(path==="/api/staff/application/details"){
+   if(!isString(body.recordId)||!idRE.test(body.recordId))return bad("Invalid form reference",400);
+   const row=await ownedApplication(env,staff,body.recordId);
+   if(!row)return bad("Form not found",404);
+   return json({recordId:row.id,number:row.form_number,kind:row.kind,
+     fields:JSON.parse(row.fields_json),revisionNumber:row.revision_number,
+     hidden:!!row.staff_hidden_at,documentStatus:row.document_status,
+     sheetStatus:row.sheet_sync_status});
+  }
+  if(path==="/api/staff/application/hide"||path==="/api/staff/application/restore"){
+   if(!isString(body.recordId)||!idRE.test(body.recordId))return bad("Invalid form reference",400);
+   const row=await ownedApplication(env,staff,body.recordId);
+   if(!row)return bad("Form not found",404);
+   const hide=path.endsWith("/hide");
+   if(hide===!!row.staff_hidden_at)return json({success:true,number:row.form_number,hidden:hide});
+   const change=await env.DB.prepare(hide?
+     "UPDATE student_applications SET staff_hidden_at=CURRENT_TIMESTAMP WHERE id=? AND staff_id=? AND staff_hidden_at IS NULL":
+     "UPDATE student_applications SET staff_hidden_at=NULL WHERE id=? AND staff_id=? AND staff_hidden_at IS NOT NULL"
+   ).bind(row.id,staff.id).run();
+   if(change.meta?.changes!==1)return bad("Form was changed. Refresh and retry.",409);
+   await env.DB.prepare(
+     "INSERT INTO staff_form_audit(application_id,staff_id,action,revision_number) VALUES (?,?,?,?)"
+   ).bind(row.id,staff.id,hide?"hide":"restore",row.revision_number).run();
+   return json({success:true,number:row.form_number,hidden:hide,
+     message:hide?"Form removed from active Staff list; issued number and Drive/Sheet records are preserved.":"Form restored to active Staff list."});
+  }
+  if(path==="/api/staff/application/update"){
+   if(!isString(body.recordId)||!idRE.test(body.recordId)||
+      typeof body.revisionNumber!=="number"||!Number.isSafeInteger(body.revisionNumber))
+      return bad("Invalid form or revision reference",400);
+   const row=await ownedApplication(env,staff,body.recordId);
+   if(!row)return bad("Form not found",404);
+   if(row.staff_hidden_at)return bad("Restore the removed form before editing.",409);
+   if(row.revision_number!==body.revisionNumber)return bad("Form was updated in another tab. Refresh before editing.",409);
+   if(!body.changes||typeof body.changes!=="object"||Array.isArray(body.changes))
+     return bad("Invalid changed fields",400);
+   const changes=body.changes as Record<string,unknown>;
+   if(Object.keys(changes).length>45)return bad("Too many edited fields",400);
+   // Fail closed BEFORE any D1 edit if the newer private PDF bridge is not
+   // deployed. Old V4 apps script would keep stale PDF data after a correction.
+   try{
+     const bridge=await driveRequest(env,{action:"staffPdfV5Ready"});
+     if(bridge.code!=="STAFF_PDF_V5_READY")return bad("PDF V5 must be deployed before editing saved forms.",503);
+   }catch{
+     return bad("New professional PDF template is not yet activated. Admin must deploy Apps Script V5 before editing forms.",503);
+   }
+   const oldFields=JSON.parse(row.fields_json) as Record<string,string>;
+   const sanitized:Record<string,string>={...oldFields};
+   for(const key of ["courseName","registrationDate","registrationFee","termsAccepted"])delete sanitized[key];
+   for(const [key,value] of Object.entries(changes)){
+     if(["courseName","registrationDate","registrationFee","termsAccepted","formNumber","staffId","photoId","recordId"].includes(key)
+       ||typeof value!=="string"||value.length>1000)return bad("Invalid edited field "+key,400);
+     sanitized[key]=value;
+   }
+   let fields:Record<string,string>;
+   try{fields=await normalizedFields(env,row.kind,sanitized);}
+   catch(e){return bad(e instanceof Error?e.message:"Invalid correction data",400);}
+   // Retain original registration date and payment-record provenance.
+   if(row.kind==="scholarship"){
+     fields.registrationDate=oldFields.registrationDate||fields.registrationDate;
+     fields.registrationFee="100";
+   }
+   if(JSON.stringify(fields)===JSON.stringify(oldFields))
+     return json({...receipt(row),notice:"No changes to save."});
+   const updated=await env.DB.prepare(
+     "UPDATE student_applications SET fields_json=?,student_name=?,mobile=?,course_id=?,"+
+     "payment_mode=?,fee_amount=?,revision_number=revision_number+1,revised_at=CURRENT_TIMESTAMP,"+
+     "document_status='pending',sheet_sync_status='pending',sheet_last_error=NULL,document_last_error=NULL "+
+     "WHERE id=? AND staff_id=? AND revision_number=? AND staff_hidden_at IS NULL"
+   ).bind(JSON.stringify(fields),fields.studentName,fields.mobile,
+      row.kind==="admission"?fields.course:"ecce",
+      row.kind==="scholarship"?fields.paymentMode:null,
+      row.kind==="scholarship"?10000:Math.round(Number(fields.totalFees)*100),
+      row.id,staff.id,row.revision_number).run();
+   if(updated.meta?.changes!==1)return bad("Form was changed; refresh before saving.",409);
+   await env.DB.prepare(
+     "INSERT INTO staff_form_audit(application_id,staff_id,action,revision_number) VALUES (?,?,?,?)"
+   ).bind(row.id,staff.id,"edit",row.revision_number+1).run();
+   const fresh=await ownedApplication(env,staff,row.id);
+   if(!fresh)return bad("Correction saved; please reopen the submitted form.",503);
+   try{
+     const processed=await processSaved(env,staff,fresh);
+     return json({...receipt(processed||fresh),notice:processed?.document_status==="ready"?
+       "Correction saved. Updated PDF and Google Sheet processed. Original form number retained.":
+       "Correction saved; PDF regeneration and Sheet update need retry."});
+   }catch(e){
+     console.error("Edited Staff form pending PDF regeneration",String(e).slice(0,140));
+     await env.DB.prepare(
+       "UPDATE student_applications SET document_last_error=? WHERE id=? AND staff_id=?"
+     ).bind("Updated document processing pending. Check Apps Script V5 deployment.",row.id,staff.id).run().catch(()=>{});
+     return json({...receipt(fresh),
+       notice:"Correction saved with the same number. Updated PDF/Sheet is pending; use Retry Processing after Apps Script V5 is deployed."},202);
+   }
+  }
   if(path==="/api/staff/application/pdf-download"){
    // PDF is delivered only to the owner of the recorded form.
    // POST requests reach the Worker despite SPA asset navigation rules.
@@ -295,12 +393,14 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
   }
  }
  if(request.method==="GET"&&path==="/api/staff/applications"){
+  const hidden=new URL(request.url).searchParams.get("removed")==="1";
   const rows=await env.DB.prepare(
    "SELECT id,kind,form_number,student_name,mobile,pdf_drive_id,document_status,"+
-   "sheet_sync_status,created_at FROM student_applications WHERE staff_id=? "+
+   "sheet_sync_status,created_at,revision_number,revised_at,staff_hidden_at FROM student_applications "+
+   "WHERE staff_id=? AND "+(hidden?"staff_hidden_at IS NOT NULL":"staff_hidden_at IS NULL")+" "+
    "ORDER BY created_at DESC LIMIT 60"
   ).bind(staff.id).all<Record<string,unknown>>();
-  return json({applications:rows.results});
+  return json({applications:rows.results,removed:hidden});
  }
  if(request.method==="GET"&&path.startsWith("/api/staff/pdf/")){
   return serveStaffPdf(env,staff,path.slice("/api/staff/pdf/".length));

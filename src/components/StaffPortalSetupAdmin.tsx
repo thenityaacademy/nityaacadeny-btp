@@ -35,6 +35,7 @@ export default function StaffPortalSetupAdmin(){
   const [series,setSeries]=useState<Series|null>(null);
   const [admissionSeries,setAdmissionSeries]=useState<Series|null>(null);
   const [admissionLast,setAdmissionLast]=useState("");
+  const [admissionNext,setAdmissionNext]=useState("");
   const [config,setConfig]=useState<Config>(blank);
   const [status,setStatus]=useState<PhaseStatus|null>(null);
   const [prefix,setPrefix]=useState("");
@@ -54,7 +55,10 @@ export default function StaffPortalSetupAdmin(){
       setCourses(courseData.courses||[]);
       setSeries(seriesData.series||null);
       setAdmissionSeries(seriesData.admissionSeries||null);
-      if(seriesData.admissionSeries)setAdmissionLast(String(seriesData.admissionSeries.end_number));
+      if(seriesData.admissionSeries){
+        setAdmissionLast(String(seriesData.admissionSeries.end_number));
+        setAdmissionNext(String(seriesData.admissionSeries.next_number));
+      }
       setConfig({
         enquiryUrl:configData.enquiryUrl||"",
         admissionTerms:configData.admissionTerms||"",
@@ -104,12 +108,14 @@ export default function StaffPortalSetupAdmin(){
     if(!admissionSeries)return;
     setBusy("admission-series");setNotice("");setError("");
     try{
-      const end=Number(admissionLast);
+      const end=Number(admissionLast),start=Number(admissionNext);
       if(!Number.isSafeInteger(end)||end<admissionSeries.end_number)
         throw Error("Last Admission Number may only be increased");
+      if(!Number.isSafeInteger(start)||start<admissionSeries.next_number||start>end+1)
+        throw Error("Next Number can only move forward within the configured range");
       await call("/api/admin/staff/registration-series",post({
         kind:"admission",prefix:admissionSeries.prefix,
-        start:admissionSeries.next_number,end
+        start,end
       }));
       setNotice("Admission form number range updated. Previously issued numbers are never reused.");
       await reload();
@@ -132,7 +138,7 @@ export default function StaffPortalSetupAdmin(){
       </div>
       <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm text-blue-900 flex gap-2">
         <ShieldCheck size={20} className="shrink-0"/>
-        Registration ranges, Enquiry Link and editable Terms are configured below. Final submissions, PDFs and WhatsApp sharing are controlled by separate Cloudflare release switches and must pass end-to-end testing before activation.
+        Registration series, Enquiry Link and Terms are managed here. Changing the Next Number affects only future registrations and never renumbers saved forms.
       </div>
       {status&&<p className="text-sm mt-3 text-slate-700">
         Staff Accounts: <strong>{status.staffAccounts}</strong> · Staff Form Records: <strong>{status.staffApplications}</strong> ·
@@ -170,7 +176,7 @@ export default function StaffPortalSetupAdmin(){
     <form onSubmit={extendAdmission} className="rounded-2xl bg-white border p-5 md:p-6 space-y-3">
       <h3 className="text-xl font-bold flex items-center gap-2"><ClipboardList size={21}/>Admission Form Number Series</h3>
       <p className="text-sm text-slate-600">
-        Sequential and permanent. Issued numbers cannot be reused. Only the Last Number may be increased.
+        Admin may advance Next Number or increase Last Number. Previously issued numbers are never reused; skipped numbers cannot be recovered.
       </p>
       {admissionSeries?<div className="space-y-3">
         <div className="grid sm:grid-cols-3 gap-3">
@@ -179,8 +185,9 @@ export default function StaffPortalSetupAdmin(){
               className="mt-1 border rounded-lg p-3 w-full bg-slate-100"/>
           </label>
           <label className="text-sm font-semibold">Next Number
-            <input readOnly value={String(admissionSeries.next_number).padStart(4,"0")}
-              className="mt-1 border rounded-lg p-3 w-full bg-slate-100"/>
+            <input required type="number" min={admissionSeries.next_number} max={999999999} step={1}
+              value={admissionNext} onChange={e=>setAdmissionNext(e.target.value)}
+              className="mt-1 border rounded-lg p-3 w-full"/>
           </label>
           <label className="text-sm font-semibold">Last Number
             <input type="number" min={admissionSeries.end_number} max={999999999}
@@ -188,7 +195,7 @@ export default function StaffPortalSetupAdmin(){
               className="mt-1 border rounded-lg p-3 w-full"/>
           </label>
         </div>
-        <p className="text-sm text-blue-800">Next form: <strong>{admissionSeries.prefix}{String(admissionSeries.next_number).padStart(4,"0")}</strong></p>
+        <p className="text-sm text-blue-800">Next form after save: <strong>{admissionSeries.prefix}{String(Number(admissionNext)||admissionSeries.next_number).padStart(4,"0")}</strong></p>
         <button disabled={busy!==""} className="pill-btn-primary disabled:opacity-50"><Save size={16} className="mr-2"/> Save Admission Range</button>
       </div>:<p className="text-sm text-amber-700">
         Admission series not configured. Contact Admin. Never issue real application numbers before configuration.
@@ -197,7 +204,7 @@ export default function StaffPortalSetupAdmin(){
     <form onSubmit={saveSeries} className="rounded-2xl bg-white border p-5 md:p-6 space-y-4">
       <h3 className="text-xl font-bold flex items-center gap-2"><ClipboardList size={21}/> ECCE Scholarship Registration Series</h3>
       <p className="text-sm text-slate-600">
-        Scholarship sequence is set independently. Prefix and Next Number cannot move backwards or change after issue; only Last Number can increase.
+        Scholarship sequence is independent. Admin may advance Next Number and increase Last Number; old numbers and skipped numbers are never reused.
       </p>
       <div className="grid sm:grid-cols-3 gap-3">
         <label className="text-sm font-semibold">Prefix
@@ -206,8 +213,8 @@ export default function StaffPortalSetupAdmin(){
             className="mt-1 border rounded-lg p-3 w-full disabled:bg-slate-100"/>
         </label>
         <label className="text-sm font-semibold">Next Number
-          <input required type="number" min={1} max={999999999} step={1}
-            disabled={!!series} value={nextNumber} onChange={e=>setNextNumber(e.target.value)}
+          <input required type="number" min={series?.next_number||1} max={999999999} step={1}
+            value={nextNumber} onChange={e=>setNextNumber(e.target.value)}
             placeholder="2600001" className="mt-1 border rounded-lg p-3 w-full disabled:bg-slate-100"/>
         </label>
         <label className="text-sm font-semibold">Last Number
@@ -219,7 +226,7 @@ export default function StaffPortalSetupAdmin(){
       <button disabled={busy!==""} className="pill-btn-primary disabled:opacity-50">
         <Save size={16} className="mr-2"/> Save Series
       </button>
-      <p className="text-xs text-slate-500">This only configures numbers; no actual registration number is issued until Scholarship submissions are enabled in a later phase.</p>
+      <p className="text-xs text-slate-500">The prefix is locked once issued. Change Next Number only to skip unused numbers; existing registrations stay unchanged.</p>
     </form>
     <form onSubmit={saveConfig} className="rounded-2xl bg-white border p-5 md:p-6 space-y-4">
       <h3 className="text-xl font-bold flex items-center gap-2"><Settings size={21}/> Staff Enquiry and Terms</h3>
