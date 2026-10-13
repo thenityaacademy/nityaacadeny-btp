@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, RefreshCw, MessageCircle, FileClock, Pencil, Archive, RotateCcw, X, Save } from "lucide-react";
-import { downloadStaffPdf } from "../lib/staffPdfDownload";
+import { downloadStaffPdf, fetchStaffPdfFile, canShareStaffPdf, sharePreparedStaffPdf } from "../lib/staffPdfDownload";
 
 type Application={
  id:string;kind:"admission"|"scholarship";form_number:string;student_name:string;mobile:string;
@@ -52,6 +52,7 @@ export default function StaffApplicationsHistory({courses=[]}:{courses?:Course[]
  const [notice,setNotice]=useState("");
  const [editing,setEditing]=useState<Detail|null>(null);
  const [editFields,setEditFields]=useState<Record<string,string>>({});
+ const [preparedShare,setPreparedShare]=useState<{id:string,file:File}|null>(null);
  const reload=useCallback(async()=>{
   setBusy("load");setError("");
   try{
@@ -121,9 +122,8 @@ export default function StaffApplicationsHistory({courses=[]}:{courses?:Course[]
   }catch(e){setError(e instanceof Error?e.message:"Could not change form visibility.");}
   finally{setBusy("");}
  };
- const whatsapp=(row:Application)=>{
-  const number=(row.mobile||"").replace(/\D/g,"");
-  const message="Dear "+row.student_name+",\n\nYour "+
+ const messageFor=(row:Application)=>{
+  return "Dear "+row.student_name+",\n\nYour "+
    (row.kind==="admission"?"admission application":"ECCE Scholarship registration")+
    " has been recorded with *Nitya Academy, Bharatpur*.\n"+
    "*Student Name:* "+row.student_name+"\n"+
@@ -132,8 +132,41 @@ export default function StaffApplicationsHistory({courses=[]}:{courses?:Course[]
    "This acknowledgement does not confirm final admission, scholarship selection or payment.\n\n"+
    "*NITYA ACADEMY, BHARATPUR*\nNear Ketan Gate, Sahyog Nagar, Bharatpur 321001"+
    "\nContact: +91 9680008384 | +91 9802813444";
+ };
+ const whatsapp=(row:Application)=>{
+  const number=(row.mobile||"").replace(/\D/g,"");
   window.open("https://wa.me/"+(/^[6-9]\d{9}$/.test(number)?"91"+number:"")+
-   "?text="+encodeURIComponent(message),"_blank","noopener,noreferrer");
+   "?text="+encodeURIComponent(messageFor(row)),"_blank","noopener,noreferrer");
+ };
+ const prepareShare=async(row:Application)=>{
+  if(busy)return;
+  setBusy(row.id+"-share");setError("");setPreparedShare(null);
+  try{
+   const file=await fetchStaffPdfFile(row.id,row.form_number);
+   if(!canShareStaffPdf(file))
+    throw Error("This device cannot send a PDF through the native Share menu. Download it and attach in WhatsApp manually.");
+   setPreparedShare({id:row.id,file});
+   setNotice("PDF ready. Tap 'Share PDF + Message', choose WhatsApp and select the recipient.");
+  }catch(e){setError(e instanceof Error?e.message:"Could not prepare PDF for WhatsApp.");}
+  finally{setBusy("");}
+ };
+ const sharePrepared=(row:Application)=>{
+  if(!preparedShare||preparedShare.id!==row.id)return;
+  void sharePreparedStaffPdf(preparedShare.file,messageFor(row)).catch(e=>{
+   if(e?.name!=="AbortError")
+    setError("WhatsApp cannot accept the file + message from this browser. Download the PDF and attach it manually.");
+  });
+ };
+ const regenerate=async(row:Application)=>{
+  if(busy)return;
+  if(!window.confirm("Regenerate a compact PDF for "+row.form_number+" using the SAME student data and ORIGINAL registration number? This replaces the old private PDF; the Sheet number stays unchanged."))return;
+  setBusy(row.id+"-rebuild");setError("");setNotice("");setPreparedShare(null);
+  try{
+   const result=await api("/api/staff/application/regenerate-pdf",post({recordId:row.id}));
+   setNotice(result.notice||"PDF rebuild requested. Refresh to check PDF status.");
+   await reload();
+  }catch(e){setError(e instanceof Error?e.message:"PDF rebuild failed. The original form number has not changed.");}
+  finally{setBusy("");}
  };
  const editingKeys=useMemo(()=>{
   if(!editing)return [] as string[];
@@ -206,8 +239,23 @@ export default function StaffApplicationsHistory({courses=[]}:{courses?:Course[]
       <Pencil size={16}/>Edit Form
     </button>}
     {!removed&&row.document_status==="ready"&&row.pdf_drive_id&&<button type="button"
+      disabled={!!busy} onClick={()=>void regenerate(row)}
+      className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm disabled:opacity-50">
+      <RefreshCw size={16}/>{busy===row.id+"-rebuild"?"Rebuilding...":"Rebuild Compact PDF"}
+    </button>}
+    {!removed&&row.document_status==="ready"&&row.pdf_drive_id&&
+      <button type="button" disabled={!!busy} onClick={()=>void prepareShare(row)}
+      className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm disabled:opacity-50">
+       <MessageCircle size={16}/>{busy===row.id+"-share"?"Preparing PDF...":"Prepare PDF + Message Share"}
+      </button>}
+    {!removed&&preparedShare?.id===row.id&&canShareStaffPdf(preparedShare.file)&&
+      <button type="button" onClick={()=>sharePrepared(row)}
+       className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm">
+       <MessageCircle size={16}/>Share PDF + Message
+      </button>}
+    {!removed&&row.document_status==="ready"&&row.pdf_drive_id&&<button type="button"
       className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm" onClick={()=>whatsapp(row)}>
-      <MessageCircle size={16}/>English WhatsApp
+      <MessageCircle size={16}/>WhatsApp Text (Desktop)
     </button>}
     {removed?<button type="button" disabled={!!busy} onClick={()=>void toggleRemoved(row,false)}
       className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm disabled:opacity-50">
@@ -217,7 +265,7 @@ export default function StaffApplicationsHistory({courses=[]}:{courses?:Course[]
       <Archive size={16}/>Remove from Staff List
     </button>}
    </div>
-   <p className="text-xs text-slate-500">WhatsApp is sent manually. Private PDFs are downloaded only to logged-in Staff.</p>
+   <p className="text-xs text-slate-500">On compatible phones, Prepare then Share PDF + Message and select WhatsApp. On desktop, download the PDF, open WhatsApp text, attach the PDF manually. Rebuild requires the fixed PDF V5.1 Apps Script deployment.</p>
   </article>)}
   {editing&&<div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-start overflow-y-auto p-3 sm:p-8" role="dialog" aria-modal="true" aria-label={"Edit "+editing.number}>
    <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl p-5 space-y-5 my-4">
