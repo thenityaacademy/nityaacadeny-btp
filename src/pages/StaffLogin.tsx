@@ -139,7 +139,7 @@ export default function StaffLogin(){
             <p className="text-xs text-slate-500 mt-2">{formConfig?.submissionsEnabled?"Scholarship registrations are saved with their configured number sequence.":"Scholarship submission is not enabled yet."}</p>
           </div>
         </div>
-        {formConfig?.submissionsEnabled&&<StaffApplicationsHistory/>}
+        {formConfig?.submissionsEnabled&&<StaffApplicationsHistory courses={formConfig?.courses||[]}/>}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7">
           <h3 className="font-bold text-lg flex items-center gap-2"><Users size={20}/>Upcoming Staff Features</h3>
           <p className="text-sm text-slate-600 mt-2">
