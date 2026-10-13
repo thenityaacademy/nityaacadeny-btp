@@ -159,7 +159,11 @@ async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
   }catch(e){
    await env.DB.prepare(
     "UPDATE student_applications SET sheet_sync_status='failed',sheet_last_error=? WHERE id=?"
-   ).bind(String(e).slice(0,200),row.id).run();
+   ).bind(/illegal spreadsheet id or key/i.test(String(e))
+     ?"Spreadsheet ID configured in Google Apps Script Properties is invalid."
+     :/required tab missing|sheet headings missing|header not found/i.test(String(e))
+       ?"Google Sheet tabs/headings are misconfigured."
+       :"Google Sheets integration failed; check Apps Script Executions.",row.id).run();
   }
  }
  return ownedApplication(env,staff,row.id);
