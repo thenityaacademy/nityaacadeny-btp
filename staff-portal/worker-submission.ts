@@ -120,9 +120,11 @@ async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
   }>();
   if((!draft||!draft.drive_file_id||draft.status!=="ready")&&!photoFileId)
    throw Error("Photo draft unavailable. Contact Admin to recover the existing application.");
-  const logo=row.kind==="admission"?
-   await env.DB.prepare("SELECT extra_logo_drive_id,extra_logo_active FROM staff_courses WHERE course_id=?")
-    .bind(fields.course).first<{extra_logo_drive_id:string|null;extra_logo_active:number}>():null;
+  // Scholarship forms use the ECCE course's own Admin-managed recognition logo.
+  // When inactive or missing, the extra logo is omitted.
+  const logoCourseId=row.kind==="scholarship"?"ecce":fields.course;
+  const logo=await env.DB.prepare("SELECT extra_logo_drive_id,extra_logo_active FROM staff_courses WHERE course_id=?")
+   .bind(logoCourseId).first<{extra_logo_drive_id:string|null;extra_logo_active:number}>();
   const terms=await env.DB.prepare(
    "SELECT setting_value FROM portal_settings WHERE setting_key=?"
   ).bind(row.kind==="admission"?"admissionTerms":"scholarshipTerms")
