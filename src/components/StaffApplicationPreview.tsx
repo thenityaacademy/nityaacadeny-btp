@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, ImageUp, Trash2, CheckCircle2, ShieldCheck, Download, MessageCircle, RefreshCcw } from "lucide-react";
 import { defaultFormEditor, type FormEditorConfig } from "../data/staffFormEditor";
-import { downloadStaffPdf } from "../lib/staffPdfDownload";
+import { downloadStaffPdf, fetchStaffPdfFile, canShareStaffPdf, sharePreparedStaffPdf } from "../lib/staffPdfDownload";
 
 type Staff={id:string;name:string};
 export type PortalCourse={id:string;name:string;category:string;active:boolean;defaultFee:number|null};
@@ -88,6 +88,8 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
   const [submitError,setSubmitError]=useState("");
   const [receipt,setReceipt]=useState<Receipt|null>(null);
   const [pdfBusy,setPdfBusy]=useState(false);
+  const [shareFile,setShareFile]=useState<File|null>(null);
+  const [shareLoading,setShareLoading]=useState(false);
   const [recipientNumber,setRecipientNumber]=useState("");
   const whatsappMessage=receipt
     ? "Dear "+receipt.studentName+",\n\n"+
@@ -132,6 +134,22 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
     catch(e){setSubmitError(e instanceof Error?e.message:"Could not download PDF");}
     finally{setPdfBusy(false);}
   };
+  const preparePdfShare=async()=>{
+    if(!receipt||!receipt.pdfReady||shareLoading)return;
+    setShareLoading(true);setSubmitError("");
+    try{setShareFile(await fetchStaffPdfFile(receipt.recordId,receipt.number));}
+    catch(e){setSubmitError(e instanceof Error?e.message:"Could not prepare PDF for sharing.");}
+    finally{setShareLoading(false);}
+  };
+  const sharePdfWithMessage=()=>{
+    if(!shareFile||!receipt)return;
+    // Must be invoked directly in the click: navigator.share needs user activation.
+    void sharePreparedStaffPdf(shareFile,whatsappMessage).catch(e=>{
+      if(e?.name!=="AbortError")
+       setSubmitError("Unable to share PDF and message together on this device. Download the PDF, open WhatsApp, then attach it manually.");
+    });
+  };
+  useEffect(()=>{setShareFile(null);},[receipt?.recordId]);
   // The WhatsApp deep link must open synchronously from the user click.
   // Awaiting PDF fetch first causes popup blockers in desktop browsers.
   // WhatsApp links can prefill text, but cannot attach a private PDF file.
@@ -382,9 +400,17 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
           disabled={pdfBusy} className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-50">
           <Download size={16}/>{pdfBusy?"Downloading PDF...":"Download PDF"}
         </button>}
+        {receipt.pdfReady&&!shareFile&&<button type="button" onClick={()=>void preparePdfShare()}
+          disabled={shareLoading} className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-50">
+          <MessageCircle size={16}/>{shareLoading?"Preparing PDF...":"Prepare PDF + Message Share"}
+        </button>}
+        {receipt.pdfReady&&shareFile&&canShareStaffPdf(shareFile)&&<button type="button" onClick={sharePdfWithMessage}
+          className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2">
+          <MessageCircle size={16}/> Share PDF + English Message
+        </button>}
         {receipt.pdfReady&&<button type="button" onClick={openWhatsApp}
           className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2">
-          <MessageCircle size={16}/> Open WhatsApp (English Message)
+          <MessageCircle size={16}/> WhatsApp Text (Desktop Fallback)
         </button>}
         {(!receipt.pdfReady||receipt.sheetStatus!=="synced")&&<button type="button"
           disabled={submitting} onClick={()=>void submissionAction(true)}
@@ -392,7 +418,7 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
           <RefreshCcw size={16}/> Retry PDF / Sheet Processing
         </button>}
       </div>
-      <p className="text-xs text-slate-600">First download the private PDF, then open WhatsApp with the prepared English message and attach the downloaded PDF manually before pressing Send. WhatsApp does not support attaching this private file via a message link.</p>
+      <p className="text-xs text-slate-600">On supported mobiles: Prepare PDF, then tap Share PDF + English Message, select WhatsApp and choose the recipient. WhatsApp may omit the caption on some devices. On desktop or if Share is unavailable, Download PDF and attach it manually after opening WhatsApp Text. Nothing is sent automatically.</p>
     </div>}
     {!receipt&&<button type="submit"
       disabled={!config.submissionsEnabled||submitting||!photoRef||!photoConsent||!termsAccepted}

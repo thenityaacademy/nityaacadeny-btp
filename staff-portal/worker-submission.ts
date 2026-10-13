@@ -234,6 +234,41 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
    return json({success:true,number:row.form_number,hidden:hide,
      message:hide?"Form removed from active Staff list; issued number and Drive/Sheet records are preserved.":"Form restored to active Staff list."});
   }
+  if(path==="/api/staff/application/regenerate-pdf"){
+   if(!isString(body.recordId)||!idRE.test(body.recordId))
+     return bad("Invalid form reference",400);
+   const row=await ownedApplication(env,staff,body.recordId);
+   if(!row)return bad("Form not found",404);
+   if(row.staff_hidden_at)return bad("Restore the form first.",409);
+   if(!row.photo_drive_id||!row.pdf_drive_id||row.document_status!=="ready")
+     return bad("Form PDF is not ready. Retry PDF / Google Sheet processing first.",409);
+   // Do not replace a working private PDF until owner has deployed the
+   // fixed 1.0 / 1.1 line spacing. V5 generated 41–46 page PDFs.
+   try{
+     const bridge=await driveRequest(env,{action:"staffPdfV5Ready"});
+     if(bridge.code!=="STAFF_PDF_V5_1_READY")
+       return bad("The compact PDF V5.1 is not deployed. Admin must update Google Apps Script first.",503);
+   }catch{
+     return bad("Could not verify compact PDF V5.1. No data was changed.",503);
+   }
+   const update=await env.DB.prepare(
+     "UPDATE student_applications SET document_status='pending',document_last_error=NULL "+
+     "WHERE id=? AND staff_id=? AND staff_hidden_at IS NULL AND document_status='ready' AND revision_number=?"
+   ).bind(row.id,staff.id,row.revision_number).run();
+   if(update.meta?.changes!==1)return bad("Form changed during PDF regeneration. Refresh and retry.",409);
+   const pending={...row,document_status:"pending" as DocState};
+   try{
+     const saved=await processSaved(env,staff,pending);
+     if(!saved)return bad("Form could not be reloaded.",503);
+     return json({...receipt(saved),
+       notice:saved.document_status==="ready"
+         ?"Compact PDF regenerated with the ORIGINAL Registration Number. Google Sheet was not renumbered."
+         :"Regeneration pending; use Retry PDF / Sheet Processing."});
+   }catch(err){
+     console.error("Staff compact PDF regeneration pending",String(err).slice(0,130));
+     return json({...receipt(pending),notice:"Regeneration is pending; original form number is preserved. Use Retry PDF / Sheet Processing."},202);
+   }
+  }
   if(path==="/api/staff/application/update"){
    if(!isString(body.recordId)||!idRE.test(body.recordId)||
       typeof body.revisionNumber!=="number"||!Number.isSafeInteger(body.revisionNumber))
@@ -250,7 +285,7 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
    // deployed. Old V4 apps script would keep stale PDF data after a correction.
    try{
      const bridge=await driveRequest(env,{action:"staffPdfV5Ready"});
-     if(bridge.code!=="STAFF_PDF_V5_READY")return bad("PDF V5 must be deployed before editing saved forms.",503);
+     if(bridge.code!=="STAFF_PDF_V5_1_READY")return bad("Compact PDF V5.1 must be deployed before editing saved forms.",503);
    }catch{
      return bad("New professional PDF template is not yet activated. Admin must deploy Apps Script V5 before editing forms.",503);
    }

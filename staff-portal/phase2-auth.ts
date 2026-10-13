@@ -199,6 +199,7 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
      path==="/api/staff/application/retry"&&post||
      path==="/api/staff/application/details"&&post||
      path==="/api/staff/application/update"&&post||
+     path==="/api/staff/application/regenerate-pdf"&&post||
      path==="/api/staff/application/hide"&&post||
      path==="/api/staff/application/restore"&&post||
      path==="/api/staff/application/pdf-download"&&post||
