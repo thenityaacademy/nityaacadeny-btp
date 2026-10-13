@@ -246,6 +246,14 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
      return bad("Invalid changed fields",400);
    const changes=body.changes as Record<string,unknown>;
    if(Object.keys(changes).length>45)return bad("Too many edited fields",400);
+   // Fail closed BEFORE any D1 edit if the newer private PDF bridge is not
+   // deployed. Old V4 apps script would keep stale PDF data after a correction.
+   try{
+     const bridge=await driveRequest(env,{action:"staffPdfV5Ready"});
+     if(bridge.code!=="STAFF_PDF_V5_READY")return bad("PDF V5 must be deployed before editing saved forms.",503);
+   }catch{
+     return bad("New professional PDF template is not yet activated. Admin must deploy Apps Script V5 before editing forms.",503);
+   }
    const oldFields=JSON.parse(row.fields_json) as Record<string,string>;
    const sanitized:Record<string,string>={...oldFields};
    for(const key of ["courseName","registrationDate","registrationFee","termsAccepted"])delete sanitized[key];
