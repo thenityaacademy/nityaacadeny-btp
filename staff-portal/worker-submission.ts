@@ -14,7 +14,7 @@ type Kind="admission"|"scholarship";
 type DocState="pending"|"ready";
 type Stored={id:string;kind:Kind;form_number:string;staff_id:string;student_name:string;mobile:string;fields_json:string;
   photo_drive_id:string|null;pdf_drive_id:string|null;photo_draft_id:string;document_status:DocState;
-  sheet_sync_status:string;created_at:string};
+  sheet_sync_status:string;created_at:string;staff_hidden_at:string|null;revision_number:number;revised_at:string|null};
 const json=(data:unknown,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"private,no-store","X-Content-Type-Options":"nosniff"}});
 const bad=(message:string,status=400)=>json({error:message},status);
 const idRE=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -105,20 +105,20 @@ async function normalizedFields(env:WorkflowEnv,kind:Kind,input:unknown){
 async function ownedApplication(env:WorkflowEnv,staff:StaffIdentity,recordId:string){
  return env.DB.prepare(
   "SELECT id,kind,form_number,staff_id,student_name,mobile,fields_json,"+
-  "photo_drive_id,pdf_drive_id,photo_draft_id,document_status,sheet_sync_status,created_at "+
+  "photo_drive_id,pdf_drive_id,photo_draft_id,document_status,sheet_sync_status,created_at,staff_hidden_at,revision_number,revised_at "+
   "FROM student_applications WHERE id=? AND staff_id=?"
  ).bind(recordId,staff.id).first<Stored>();
 }
 async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
  const fields=JSON.parse(row.fields_json) as Record<string,string>;
  let photoFileId=row.photo_drive_id||"",pdfFileId=row.pdf_drive_id||"";
- if(!pdfFileId){
+ if(!pdfFileId||row.document_status!=="ready"){
   const draft=await env.DB.prepare(
    "SELECT id,drive_file_id,mime,status,expires_at FROM staff_photo_drafts WHERE id=? AND staff_id=? AND kind=?"
   ).bind(row.photo_draft_id,staff.id,row.kind).first<{
    id:string;drive_file_id:string|null;mime:string;status:string;expires_at:string;
   }>();
-  if(!draft||!draft.drive_file_id||draft.status!=="ready")
+  if((!draft||!draft.drive_file_id||draft.status!=="ready")&&!photoFileId)
    throw Error("Photo draft unavailable. Contact Admin to recover the existing application.");
   const logo=row.kind==="admission"?
    await env.DB.prepare("SELECT extra_logo_drive_id,extra_logo_active FROM staff_courses WHERE course_id=?")
@@ -127,10 +127,12 @@ async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
    "SELECT setting_value FROM portal_settings WHERE setting_key=?"
   ).bind(row.kind==="admission"?"admissionTerms":"scholarshipTerms")
    .first<{setting_value:string}>();
+  const regenerating=!!pdfFileId&&row.document_status!=="ready";
   const doc=await driveRequest(env,{
-   action:"finalizeStudentDocuments",type:row.kind,recordId:row.id,formNumber:row.form_number,
-   createdAt:row.created_at,photoId:row.photo_draft_id,photoFileId:draft.drive_file_id,
-   photoMime:draft.mime,fields:{...fields,course:fields.courseName||fields.course},staffId:staff.id,staffName:staff.name,
+   action:regenerating?"reviseStudentDocuments":"finalizeStudentDocuments",type:row.kind,recordId:row.id,formNumber:row.form_number,
+   createdAt:row.created_at,photoId:row.photo_draft_id,photoFileId:photoFileId||draft?.drive_file_id,
+   existingPdfFileId:regenerating?pdfFileId:null,revisionNumber:row.revision_number,
+   photoMime:draft?.mime||null,fields:{...fields,course:fields.courseName||fields.course},staffId:staff.id,staffName:staff.name,
    terms:terms?.setting_value||"",
    courseLogoFileId:logo?.extra_logo_active===1?logo.extra_logo_drive_id:null
   });
@@ -139,10 +141,10 @@ async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
   if(!photoFileId||!pdfFileId)throw Error("PDF storage returned an incomplete reference");
   await env.DB.prepare(
    "UPDATE student_applications SET photo_drive_id=?,pdf_drive_id=?,document_status='ready',"+
-   "document_last_error=NULL WHERE id=? AND staff_id=?"
-  ).bind(photoFileId,pdfFileId,row.id,staff.id).run();
+   "document_last_error=NULL WHERE id=? AND staff_id=? AND revision_number=?"
+  ).bind(photoFileId,pdfFileId,row.id,staff.id,row.revision_number).run();
   // This ID now belongs to permanent application; do not let expiry cleanup trash it.
-  await env.DB.prepare("DELETE FROM staff_photo_drafts WHERE id=? AND staff_id=?")
+  if(draft)await env.DB.prepare("DELETE FROM staff_photo_drafts WHERE id=? AND staff_id=?")
    .bind(row.photo_draft_id,staff.id).run();
  }
  if(row.sheet_sync_status!=="synced"){
@@ -173,7 +175,8 @@ function receipt(row:Stored){
    studentName:row.student_name,mobile:row.mobile,
    pdfReady:row.document_status==="ready"&&!!row.pdf_drive_id,
    pdfUrl:row.document_status==="ready"&&row.pdf_drive_id?"/api/staff/pdf/"+row.id:null,
-   sheetStatus:row.sheet_sync_status,documentStatus:row.document_status};
+   sheetStatus:row.sheet_sync_status,documentStatus:row.document_status,
+   revisionNumber:row.revision_number};
 }
 async function serveStaffPdf(env:WorkflowEnv,staff:StaffIdentity,id:string):Promise<Response>{
   if(!idRE.test(id))return bad("Invalid PDF reference",400);
