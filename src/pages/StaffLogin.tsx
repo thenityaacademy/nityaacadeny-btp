@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { LogIn, LogOut, ShieldCheck, FileText, GraduationCap, Users, LockKeyhole, ClipboardList } from "lucide-react";
 import StaffApplicationPreview, { type FormConfig, type Kind } from "../components/StaffApplicationPreview";
+import StaffApplicationsHistory from "../components/StaffApplicationsHistory";
 
 type Staff={id:string;name:string};
 type Dashboard={
@@ -138,6 +139,7 @@ export default function StaffLogin(){
             <p className="text-xs text-slate-500 mt-2">{formConfig?.submissionsEnabled?"Scholarship registrations are saved with their configured number sequence.":"Scholarship submission is not enabled yet."}</p>
           </div>
         </div>
+        {formConfig?.submissionsEnabled&&<StaffApplicationsHistory/>}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7">
           <h3 className="font-bold text-lg flex items-center gap-2"><Users size={20}/>Upcoming Staff Features</h3>
           <p className="text-sm text-slate-600 mt-2">
