@@ -159,7 +159,7 @@ function finalizeStudentDocuments_(p){
  */
 function pdfV5Text_(cell,size,bold,color) {
   const paragraph=cell.getChild(0).asParagraph();
-  paragraph.setSpacingBefore(0).setSpacingAfter(1).setLineSpacing(100);
+  paragraph.setSpacingBefore(0).setSpacingAfter(1).setLineSpacing(1.0);
   const txt=paragraph.editAsText();
   txt.setFontFamily("Arial").setFontSize(size||9);
   if(bold)txt.setBold(true);
@@ -205,7 +205,7 @@ function pdfV5Photo_(cell,blob,maxW,maxH) {
 }
 function pdfV5Paragraph_(body,text,size,bold,color,align){
   const paragraph=body.appendParagraph(String(text||""));
-  paragraph.setSpacingAfter(3).setSpacingBefore(2).setLineSpacing(110);
+  paragraph.setSpacingAfter(3).setSpacingBefore(2).setLineSpacing(1.1);
   if(align)paragraph.setAlignment(align);
   const t=paragraph.editAsText();
   t.setFontFamily("Arial").setFontSize(size||9);
@@ -409,8 +409,30 @@ function reviseStudentDocuments_(p){
    photoName:photoName,pdfName:current.getName(),revision:Number(p.revisionNumber)||0};
 }
 
+/**
+ * PDF V5.1 corrective release: Google DocumentApp Paragraph.setLineSpacing
+ * takes the number of lines, NOT a percentage. The V5 values 100/110
+ * caused 41–46 page PDFs by giving every table cell ~100 line spacing.
+ * Keep all table/section paragraphs between 1.0 and 1.1 lines.
+ *
+ * This static guard is run in the Apps Script Editor along with the
+ * 2-form synthetic smoke check to prevent a repeated 46-page export.
+ */
+function verifyPdfV51CompactSpacing_(){
+ const sample=DocumentApp.create("NITYA LAYOUT V5.1 TEST - DELETE");
+ try{
+  const paragraph=sample.getBody().appendParagraph("Test Normal Line Spacing");
+  paragraph.setLineSpacing(1.0).setSpacingBefore(0).setSpacingAfter(0);
+  const compact=paragraph.getLineSpacing();
+  if(compact>2.0)throw Error("PDF V5.1 paragraph spacing must be <=2.0 lines");
+  return true;
+ }finally{
+  try{DriveApp.getFileById(sample.getId()).setTrashed(true);}catch(ignore){}
+ }
+}
 /** Apps Script Editor dropdown test function; no real student data. */
 function testStaffPdfV5(){
+ verifyPdfV51CompactSpacing_();
  const result=verifyStudentPdfV4_();
  Logger.log(JSON.stringify(result));
  return result;
