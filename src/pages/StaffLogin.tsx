@@ -21,7 +21,7 @@ export default function StaffLogin(){
   const [staff,setStaff]=useState<Staff|null>(null);
   const [dashboard,setDashboard]=useState<Dashboard|null>(null);
   const [formConfig,setFormConfig]=useState<FormConfig|null>(null);
-  const [activeTab,setActiveTab]=useState<"dashboard"|Kind>("dashboard");
+  const [activeTab,setActiveTab]=useState<"dashboard"|Kind|"admissions-list"|"scholarships-list">("dashboard");
   const [checking,setChecking]=useState(true);
   const [busy,setBusy]=useState(false);
   const [staffId,setStaffId]=useState("");
@@ -110,13 +110,31 @@ export default function StaffLogin(){
                 :"Staff Login and Form Preview are available. Student data submission is currently disabled."}
           </div>
         </div>
-        <div className="rounded-2xl border bg-white p-4 sm:p-5 flex flex-wrap gap-3">
+        <div className="space-y-3">
           <button type="button" onClick={()=>setActiveTab("dashboard")}
-            className={activeTab==="dashboard"?"pill-btn-primary":"rounded-xl border px-4 py-2"}>Dashboard</button>
-          <button type="button" onClick={()=>setActiveTab("admission")}
-            className={activeTab==="admission"?"pill-btn-primary":"rounded-xl border px-4 py-2"}>{formConfig?.submissionsEnabled?"Student Admission Form":"Admission Form Preview"}</button>
-          <button type="button" onClick={()=>setActiveTab("scholarship")}
-            className={activeTab==="scholarship"?"pill-btn-primary":"rounded-xl border px-4 py-2"}>{formConfig?.submissionsEnabled?"ECCE Scholarship Form":"ECCE Scholarship Preview"}</button>
+            className={activeTab==="dashboard"?"pill-btn-primary":"rounded-xl border bg-white px-4 py-2"}>Dashboard</button>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-blue-200 bg-white p-4 space-y-3">
+              <div className="flex items-center gap-2 text-blue-900 font-bold"><FileText size={20}/>Admissions</div>
+              <p className="text-xs text-slate-600">Admission applications and admission records only.</p>
+              <div className="flex gap-2 flex-wrap">
+                <button type="button" onClick={()=>setActiveTab("admission")}
+                  className={activeTab==="admission"?"pill-btn-primary":"rounded-xl border px-3 py-2 text-sm"}>New Admission Form</button>
+                <button type="button" onClick={()=>setActiveTab("admissions-list")}
+                  className={activeTab==="admissions-list"?"pill-btn-primary":"rounded-xl border px-3 py-2 text-sm"}>Admission Records</button>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-indigo-200 bg-white p-4 space-y-3">
+              <div className="flex items-center gap-2 text-indigo-900 font-bold"><GraduationCap size={20}/>ECCE Scholarships</div>
+              <p className="text-xs text-slate-600">Scholarship registrations and scholarship records only.</p>
+              <div className="flex gap-2 flex-wrap">
+                <button type="button" onClick={()=>setActiveTab("scholarship")}
+                  className={activeTab==="scholarship"?"pill-btn-primary":"rounded-xl border px-3 py-2 text-sm"}>New Scholarship Form</button>
+                <button type="button" onClick={()=>setActiveTab("scholarships-list")}
+                  className={activeTab==="scholarships-list"?"pill-btn-primary":"rounded-xl border px-3 py-2 text-sm"}>Scholarship Records</button>
+              </div>
+            </div>
+          </div>
         </div>
         {activeTab==="dashboard"?<>
           <a href={formConfig?.enquiryUrl||"https://docs.google.com/forms/d/e/1FAIpQLSfF9DJ9QMfzqFeB6LKYBT62-rPcwo8cCahNyZFW0oHDrYpLoA/viewform?usp=header"}
@@ -139,7 +157,7 @@ export default function StaffLogin(){
             <p className="text-xs text-slate-500 mt-2">{formConfig?.submissionsEnabled?"Scholarship registrations are saved with their configured number sequence.":"Scholarship submission is not enabled yet."}</p>
           </div>
         </div>
-        {formConfig?.submissionsEnabled&&<StaffApplicationsHistory courses={formConfig?.courses||[]}/>}
+
         <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7">
           <h3 className="font-bold text-lg flex items-center gap-2"><Users size={20}/>Upcoming Staff Features</h3>
           <p className="text-sm text-slate-600 mt-2">
@@ -148,7 +166,9 @@ export default function StaffLogin(){
               :"Daily Enquiry, Student Admission, ECCE Scholarship, PDF and WhatsApp Sharing will be enabled after security testing and Admin approval."}
           </p>
         </div>
-        </>:formConfig?<StaffApplicationPreview key={activeTab} kind={activeTab} staff={staff} config={formConfig}/>:
+        </>:activeTab==="admissions-list"||activeTab==="scholarships-list"?
+         <StaffApplicationsHistory key={activeTab} kind={activeTab==="admissions-list"?"admission":"scholarship"} courses={formConfig?.courses||[]}/>:
+         formConfig?<StaffApplicationPreview key={activeTab} kind={activeTab as Kind} staff={staff} config={formConfig}/>:
         <p className="rounded-xl border bg-white p-4 text-slate-600">Form settings are loading. Please refresh this page.</p>}
         {error&&<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       </div>}
