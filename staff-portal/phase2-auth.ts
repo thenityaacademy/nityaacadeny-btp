@@ -445,12 +445,33 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
       "SELECT prefix,next_number,end_number FROM registration_sequences WHERE sequence_key=?"
     ).bind(kind).first<{prefix:string;next_number:number;end_number:number}>();
     if(existing){
-      if(prefix!==existing.prefix||start!==existing.next_number||end<existing.end_number)
-        return out({error:"Issued numbers cannot change. Keep current Prefix and Next Number; only Last Number may increase."},409);
-      await env.DB.prepare(
-        "UPDATE registration_sequences SET end_number=? WHERE sequence_key=? AND end_number<=?"
-      ).bind(end,kind,end).run();
-      return out({success:true,extended:true});
+      // Only move Next Number FORWARD. Issued (including hidden) numbers are
+      // never reused. Prefix stays fixed once the series has been issued.
+      if(prefix!==existing.prefix)
+        return out({error:"Prefix cannot be changed after a series starts. Existing documents keep their issued numbers."},409);
+      if(start<existing.next_number)
+        return out({error:"Next Number cannot be moved backwards. Earlier numbers may already be issued."},409);
+      if(end<existing.end_number)
+        return out({error:"Last Number can only increase."},409);
+      if(start>end+1)
+        return out({error:"Next Number cannot exceed Last Number plus one."},400);
+      if(start>existing.next_number && start<=end){
+        const issued=kind==="admission"
+          ?prefix+String(start).padStart(4,"0")
+          :prefix+String(start);
+        const collision=await env.DB.prepare(
+          "SELECT 1 AS found FROM student_applications WHERE form_number=?"
+        ).bind(issued).first();
+        if(collision)return out({error:"This Next Number was already issued; select a later number."},409);
+      }
+      const changed=await env.DB.prepare(
+        "UPDATE registration_sequences SET next_number=?,end_number=? "+
+        "WHERE sequence_key=? AND prefix=? AND next_number=? AND end_number=?"
+      ).bind(start,end,kind,existing.prefix,existing.next_number,existing.end_number).run();
+      if(changed.meta?.changes!==1)
+        return out({error:"Series changed while saving. Refresh and retry."},409);
+      return out({success:true,nextNumber:start,lastNumber:end,
+        message:start>existing.next_number?"Unused numbers skipped permanently; no number is reissued.":"Registration range saved."});
     }
     try{
       await env.DB.prepare(
@@ -463,6 +484,7 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
       return out({error:"Could not configure registration range"},503);
     }
   }
+
   // No release of scholarship settings or any other administrative write.
   return out({error:"This Admin feature is reserved for a later phase."},503);
 }
