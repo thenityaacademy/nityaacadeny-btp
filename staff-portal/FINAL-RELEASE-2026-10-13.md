@@ -5,7 +5,7 @@
 - Staff records API filters by `kind` and staff owner.
 - Removed the visible **Rebuild Compact PDF** control.
 - PDF generator source `staff-portal/google-apps-script-finalize-v5.gs` now uses a compact A4 design with black/white text/tables, Academy logo top LEFT, optionally enabled uploaded course logo top RIGHT, same maximum 68pt x 68pt logo box, and student photo in header. No extra "COURSE RECOGNITION / PROGRAMME LOGO" line.
-- No new logos, seals, or affiliation claims are generated. Course logos are still controlled per course from Admin.
+- No new logos, seals, or affiliation claims are generated. Course logos are still controlled per course from Admin. ECCE Scholarship PDFs now also resolve the active ECCE course logo (course id `ecce`), not just Admission PDFs.
 
 ## Existing test data already cleared
 - Production D1: removed 2 admission + 2 scholarship Staff Portal test records.
