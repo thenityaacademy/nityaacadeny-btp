@@ -213,8 +213,8 @@ export default function StaffPortalSetupAdmin(){
             className="mt-1 border rounded-lg p-3 w-full disabled:bg-slate-100"/>
         </label>
         <label className="text-sm font-semibold">Next Number
-          <input required type="number" min={1} max={999999999} step={1}
-            value={nextNumber} min={series?.next_number||1} onChange={e=>setNextNumber(e.target.value)}
+          <input required type="number" min={series?.next_number||1} max={999999999} step={1}
+            value={nextNumber} onChange={e=>setNextNumber(e.target.value)}
             placeholder="2600001" className="mt-1 border rounded-lg p-3 w-full disabled:bg-slate-100"/>
         </label>
         <label className="text-sm font-semibold">Last Number
