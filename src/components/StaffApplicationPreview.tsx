@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, ImageUp, Trash2, CheckCircle2, ShieldCheck, Download, MessageCircle, RefreshCcw } from "lucide-react";
 import { defaultFormEditor, type FormEditorConfig } from "../data/staffFormEditor";
+import { downloadStaffPdf } from "../lib/staffPdfDownload";
 
 type Staff={id:string;name:string};
 export type PortalCourse={id:string;name:string;category:string;active:boolean;defaultFee:number|null};
@@ -86,6 +87,7 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
   const [submitting,setSubmitting]=useState(false);
   const [submitError,setSubmitError]=useState("");
   const [receipt,setReceipt]=useState<Receipt|null>(null);
+  const [pdfBusy,setPdfBusy]=useState(false);
   const [recipientNumber,setRecipientNumber]=useState("");
   const whatsappMessage=receipt
     ? "Dear "+receipt.studentName+",\n\n"+
@@ -122,6 +124,13 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
       setReceipt(data as Receipt);
     }catch(e){setSubmitError(e instanceof Error?e.message:"Form submission failed");}
     finally{setSubmitting(false);}
+  };
+  const downloadPdf=async()=>{
+    if(!receipt||!receipt.pdfReady||pdfBusy)return;
+    setPdfBusy(true);setSubmitError("");
+    try{await downloadStaffPdf(receipt.recordId,receipt.number);}
+    catch(e){setSubmitError(e instanceof Error?e.message:"Could not download PDF");}
+    finally{setPdfBusy(false);}
   };
   // The WhatsApp deep link must open synchronously from the user click.
   // Awaiting PDF fetch first causes popup blockers in desktop browsers.
@@ -369,10 +378,10 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
           className="mt-1 block rounded-lg border bg-white px-3 py-2 w-full sm:max-w-xs"/>
       </label>
       <div className="flex flex-wrap gap-2">
-        {receipt.pdfReady&&receipt.pdfUrl&&<a href={receipt.pdfUrl}
-          className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2">
-          <Download size={16}/> Download PDF
-        </a>}
+        {receipt.pdfReady&&receipt.pdfUrl&&<button type="button" onClick={()=>void downloadPdf()}
+          disabled={pdfBusy} className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-50">
+          <Download size={16}/>{pdfBusy?"Downloading PDF...":"Download PDF"}
+        </button>}
         {receipt.pdfReady&&<button type="button" onClick={openWhatsApp}
           className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2">
           <MessageCircle size={16}/> Open WhatsApp (English Message)

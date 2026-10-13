@@ -197,6 +197,7 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
   }
   if(path==="/api/staff/application/submit"&&post||
      path==="/api/staff/application/retry"&&post||
+     path==="/api/staff/application/pdf-download"&&post||
      path==="/api/staff/applications"&&request.method==="GET"||
      path.startsWith("/api/staff/pdf/")&&request.method==="GET"){
     const staff=await getStaffSession(request,env);

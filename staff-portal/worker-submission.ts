@@ -175,6 +175,24 @@ function receipt(row:Stored){
    pdfUrl:row.document_status==="ready"&&row.pdf_drive_id?"/api/staff/pdf/"+row.id:null,
    sheetStatus:row.sheet_sync_status,documentStatus:row.document_status};
 }
+async function serveStaffPdf(env:WorkflowEnv,staff:StaffIdentity,id:string):Promise<Response>{
+  if(!idRE.test(id))return bad("Invalid PDF reference",400);
+  const row=await ownedApplication(env,staff,id);
+  if(!row)return bad("PDF not found",404);
+  if(row.document_status!=="ready"||!row.pdf_drive_id)return bad("PDF is not ready",404);
+  try{
+   const response=await driveRequest(env,{action:"getPdf",type:row.kind,fileId:row.pdf_drive_id});
+   const bytes=fromBase64(String(response.base64||""));
+   if(bytes.byteLength<500||bytes.byteLength>8000000)throw Error("Invalid PDF size");
+   return new Response(bytes,{headers:{
+    "Content-Type":"application/pdf",
+    "Content-Disposition":'attachment; filename="Nitya-Academy-'+row.form_number.replace(/[^A-Za-z0-9_-]/g,"")+'.pdf"',
+    "Cache-Control":"private,no-store","X-Content-Type-Options":"nosniff"
+   }});
+  }catch(e){console.error("PDF download unavailable",String(e).slice(0,120));
+   return bad("PDF download failed. Retry from the Staff dashboard.",503);}
+}
+
 export async function handleStaffApplication(request:Request,env:WorkflowEnv,staff:StaffIdentity):Promise<Response>{
  const path=new URL(request.url).pathname,post=request.method==="POST";
  if(!driveReady(env))return bad("Google Drive integration is not ready",503);
@@ -186,6 +204,13 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
   let body:Record<string,unknown>;
   try{const raw=await request.text();if(raw.length>20000)throw Error("Too large");body=JSON.parse(raw);}
   catch{return bad("Invalid form submission",400);}
+  if(path==="/api/staff/application/pdf-download"){
+   // PDF is delivered only to the owner of the recorded form.
+   // POST requests reach the Worker despite SPA asset navigation rules.
+   if(!isString(body.recordId)||!idRE.test(body.recordId))
+    return bad("Invalid PDF reference",400);
+   return serveStaffPdf(env,staff,body.recordId);
+  }
   if(path==="/api/staff/application/retry"){
    if(!isString(body.recordId)||!idRE.test(body.recordId))return bad("Invalid record reference");
    const row=await ownedApplication(env,staff,body.recordId);
@@ -278,22 +303,7 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
   return json({applications:rows.results});
  }
  if(request.method==="GET"&&path.startsWith("/api/staff/pdf/")){
-  const id=path.slice("/api/staff/pdf/".length);
-  if(!idRE.test(id))return bad("Invalid PDF reference",400);
-  const row=await ownedApplication(env,staff,id);
-  if(!row)return bad("PDF not found",404);
-  if(row.document_status!=="ready"||!row.pdf_drive_id)return bad("PDF is not ready",404);
-  try{
-   const response=await driveRequest(env,{action:"getPdf",type:row.kind,fileId:row.pdf_drive_id});
-   const bytes=fromBase64(String(response.base64||""));
-   if(bytes.byteLength<500||bytes.byteLength>8000000)throw Error("Invalid PDF size");
-   return new Response(bytes,{headers:{
-    "Content-Type":"application/pdf",
-    "Content-Disposition":'attachment; filename="Nitya-Academy-'+row.form_number.replace(/[^A-Za-z0-9_-]/g,"")+'.pdf"',
-    "Cache-Control":"private,no-store","X-Content-Type-Options":"nosniff"
-   }});
-  }catch(e){console.error("PDF download unavailable",String(e).slice(0,120));
-   return bad("PDF download failed. Retry from the Staff dashboard.",503);}
+  return serveStaffPdf(env,staff,path.slice("/api/staff/pdf/".length));
  }
  return bad("Unsupported application operation",405);
 }

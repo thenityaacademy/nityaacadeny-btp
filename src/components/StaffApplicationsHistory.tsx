@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Download, RefreshCw, MessageCircle, FileClock } from "lucide-react";
+import { downloadStaffPdf } from "../lib/staffPdfDownload";
 
 type Application={
  id:string;kind:"admission"|"scholarship";form_number:string;student_name:string;mobile:string;
@@ -45,6 +46,13 @@ export default function StaffApplicationsHistory(){
   }catch(e){setError(e instanceof Error?e.message:"Could not retry this application.");}
   finally{setBusy("");}
  };
+ const downloadPdf=async(row:Application)=>{
+  if(busy)return;
+  setBusy(row.id+"-pdf");setError("");
+  try{await downloadStaffPdf(row.id,row.form_number);}
+  catch(e){setError(e instanceof Error?e.message:"Unable to download PDF. Please try again.");}
+  finally{setBusy("");}
+ };
  const whatsapp=(row:Application)=>{
   // Phone is only used locally for preparing the confirmation; nothing is sent automatically.
   const number=(row.mobile||"").replace(/\D/g,"");
@@ -85,9 +93,10 @@ export default function StaffApplicationsHistory(){
     </div>
    </div>
    <div className="flex gap-2 flex-wrap">
-    {row.document_status==="ready"&&row.pdf_drive_id&&<a href={"/api/staff/pdf/"+encodeURIComponent(row.id)}
-      className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm">
-      <Download size={16}/>Download PDF</a>}
+    {row.document_status==="ready"&&row.pdf_drive_id&&<button type="button"
+      disabled={!!busy} onClick={()=>void downloadPdf(row)}
+      className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm disabled:opacity-50">
+      <Download size={16}/>{busy===row.id+"-pdf"?"Downloading...":"Download PDF"}</button>}
     {(row.sheet_sync_status!=="synced"||row.document_status!=="ready")&&<button type="button"
       disabled={!!busy} onClick={()=>void retry(row)}
       className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm disabled:opacity-50">
