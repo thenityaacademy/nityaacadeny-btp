@@ -408,3 +408,10 @@ function reviseStudentDocuments_(p){
  return {success:true,photoFileId:photo.getId(),pdfFileId:current.getId(),
    photoName:photoName,pdfName:current.getName(),revision:Number(p.revisionNumber)||0};
 }
+
+/** Apps Script Editor dropdown test function; no real student data. */
+function testStaffPdfV5(){
+ const result=verifyStudentPdfV4_();
+ Logger.log(JSON.stringify(result));
+ return result;
+}
