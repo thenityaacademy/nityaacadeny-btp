@@ -31,5 +31,9 @@
     "crons": [
       "15 3 * * *"
     ]
+  },
+  "vars": {
+    "STAFF_PHOTO_UPLOADS_ENABLED": "false",
+    "STAFF_SUBMISSIONS_ENABLED": "false"
   }
 }
