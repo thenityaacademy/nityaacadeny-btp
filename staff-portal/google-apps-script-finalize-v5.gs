@@ -307,7 +307,7 @@ function buildStaffPdf_(p,photoFile,existingPdf){
   pdfV5Section_(b,"5. APPLICANT DECLARATION",[
     ["Registration Number",p.formNumber],["Recorded by",String(p.staffName||"")+" ("+String(p.staffId||"")+")"]
   ]);
-  pdfV5Paragraph_(b,"I certify that the information provided in this registration is accurate. "+String(p.terms||"").slice(0,4500),8.5,false,"#233B53");
+  pdfV5Paragraph_(b,String(p.terms||"I certify that all information supplied is accurate and agree to the institute rules.").slice(0,4500),8.5,false,"#233B53");
   const sign=b.appendTable([["Student / Guardian Signature","For Nitya Academy (Authorized Signatory)"]]);
   sign.setBorderColor("#CAD4DF").setBorderWidth(0.5);
   for(let c=0;c<2;c++){
