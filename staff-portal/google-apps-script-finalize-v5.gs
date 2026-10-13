@@ -228,13 +228,14 @@ function buildStaffPdf_(p,photoFile,existingPdf){
   body.setPageWidth(595.28).setPageHeight(841.89); // ISO A4, points
   body.setMarginTop(16).setMarginBottom(16).setMarginLeft(18).setMarginRight(18);
   // Header: prominent institute logo far left, admin-enabled course logo far right.
-  // Both use the SAME 84 x 84 pt maximum bounding area, photo stays separate.
+  // Academy uses an 88pt square; a wide programme logo can use up to 123pt.
+  // Both remain prominent at the top while the original student photo stays separate.
   const header=body.appendTable([["","NITYA ACADEMY","",""]]);
   header.setBorderColor("#000000").setBorderWidth(0.7);
-  [92,296,75,92].forEach(function(w,i){header.setColumnWidth(i,w);});
+  [97,261,67,130].forEach(function(w,i){header.setColumnWidth(i,w);});
   const cells=[0,1,2,3].map(i=>header.getRow(0).getCell(i));
   cells.forEach(cell=>cell.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(2).setPaddingRight(2));
-  pdfV6Image_(cells[0],DriveApp.getFileById(DRIVE_FOLDERS.mainLogo).getBlob(),84,84,"ACADEMY LOGO");
+  pdfV6Image_(cells[0],DriveApp.getFileById(DRIVE_FOLDERS.mainLogo).getBlob(),88,88,"ACADEMY LOGO");
   pdfV6Para_(cells[1].getChild(0).asParagraph(),13,true,DocumentApp.HorizontalAlignment.CENTER);
   const info=[
    "BHARATPUR | EDUCATION & SKILL DEVELOPMENT",
@@ -244,11 +245,11 @@ function buildStaffPdf_(p,photoFile,existingPdf){
   info.forEach(function(line,i){
    pdfV6Para_(cells[1].appendParagraph(line),i===0?7:7.3,i!==1,DocumentApp.HorizontalAlignment.CENTER);
   });
-  pdfV6Image_(cells[2],photoFile.getBlob(),61,75,"STUDENT PHOTO");
+  pdfV6Image_(cells[2],photoFile.getBlob(),55,71,"STUDENT PHOTO");
   if(p.courseLogoFileId){
    const logo=DriveApp.getFileById(p.courseLogoFileId);
    if(!inFolder_(logo,DRIVE_FOLDERS.logos))throw Error("Unrecognized course logo");
-   pdfV6Image_(cells[3],logo.getBlob(),84,84,"COURSE LOGO");
+   pdfV6Image_(cells[3],logo.getBlob(),123,88,"COURSE LOGO");
   }else pdfV6Para_(cells[3].getChild(0).asParagraph(),7,false);
   const title=body.appendParagraph(isAdmission?
     "STUDENT ADMISSION APPLICATION FORM":"ECCE SCHOLARSHIP REGISTRATION FORM");
