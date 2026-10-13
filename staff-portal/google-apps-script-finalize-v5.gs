@@ -167,25 +167,30 @@ function pdfV6Para_(p,size,bold,align){
  return p;
 }
 function pdfV6Cell_(cell,size,bold){
- cell.setPaddingTop(2).setPaddingBottom(2).setPaddingLeft(4).setPaddingRight(4);
+ cell.setPaddingTop(1).setPaddingBottom(1).setPaddingLeft(3).setPaddingRight(3);
  return pdfV6Para_(cell.getChild(0).asParagraph(),size||7.5,!!bold);
 }
 function pdfV6Table_(body,rows){
  const table=body.appendTable(rows);
- table.setBorderColor("#000000").setBorderWidth(0.45);
+ table.setBorderColor("#000000").setBorderWidth(0.5);
+ // Compact consistent columns keep values aligned without wasting A4 space.
+ if(rows.length && rows[0].length===4){
+  [112,158,112,166].forEach(function(w,i){table.setColumnWidth(i,w);});
+ }
  for(let i=0;i<rows.length;i++){
-  for(let j=0;j<rows[i].length;j++)pdfV6Cell_(table.getRow(i).getCell(j),7.3,j%2===0);
+  for(let j=0;j<rows[i].length;j++)pdfV6Cell_(table.getRow(i).getCell(j),7.1,j%2===0);
  }
  return table;
 }
 function pdfV6Section_(body,title,pairs){
  const bar=body.appendTable([[String(title).toUpperCase()]]);
- bar.setBorderWidth(0);
+ bar.setBorderColor("#000000").setBorderWidth(0.6);
  const heading=bar.getCell(0,0);
- heading.setBackgroundColor("#000000").setPaddingTop(2).setPaddingBottom(2).setPaddingLeft(5);
+ // Outline only: no coloured or black filled bars, logos/photos retain colours.
+ heading.setBackgroundColor("#FFFFFF").setPaddingTop(1).setPaddingBottom(1).setPaddingLeft(5);
  const hp=heading.getChild(0).asParagraph();
  hp.setSpacingBefore(0).setSpacingAfter(0).setLineSpacing(1);
- hp.editAsText().setFontFamily("Arial").setFontSize(8).setBold(true).setForegroundColor("#FFFFFF");
+ hp.editAsText().setFontFamily("Arial").setFontSize(8).setBold(true).setForegroundColor("#000000");
  const rows=[];
  for(let i=0;i<pairs.length;i+=2){
   const first=pairs[i],second=pairs[i+1]||["",""];
@@ -221,14 +226,15 @@ function buildStaffPdf_(p,photoFile,existingPdf){
  try{
   const body=doc.getBody();
   body.setPageWidth(595.28).setPageHeight(841.89); // ISO A4, points
-  body.setMarginTop(18).setMarginBottom(18).setMarginLeft(19).setMarginRight(19);
-  // Header: institute logo left, course/recognition logo at far right; both
-  // have the SAME 68 x 68 point bounding box. Photo is a separate middle cell.
+  body.setMarginTop(16).setMarginBottom(16).setMarginLeft(18).setMarginRight(18);
+  // Header: prominent institute logo far left, admin-enabled course logo far right.
+  // Both use the SAME 84 x 84 pt maximum bounding area, photo stays separate.
   const header=body.appendTable([["","NITYA ACADEMY","",""]]);
   header.setBorderColor("#000000").setBorderWidth(0.7);
+  [92,296,75,92].forEach(function(w,i){header.setColumnWidth(i,w);});
   const cells=[0,1,2,3].map(i=>header.getRow(0).getCell(i));
   cells.forEach(cell=>cell.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(2).setPaddingRight(2));
-  pdfV6Image_(cells[0],DriveApp.getFileById(DRIVE_FOLDERS.mainLogo).getBlob(),68,68,"ACADEMY LOGO");
+  pdfV6Image_(cells[0],DriveApp.getFileById(DRIVE_FOLDERS.mainLogo).getBlob(),84,84,"ACADEMY LOGO");
   pdfV6Para_(cells[1].getChild(0).asParagraph(),13,true,DocumentApp.HorizontalAlignment.CENTER);
   const info=[
    "BHARATPUR | EDUCATION & SKILL DEVELOPMENT",
@@ -238,11 +244,11 @@ function buildStaffPdf_(p,photoFile,existingPdf){
   info.forEach(function(line,i){
    pdfV6Para_(cells[1].appendParagraph(line),i===0?7:7.3,i!==1,DocumentApp.HorizontalAlignment.CENTER);
   });
-  pdfV6Image_(cells[2],photoFile.getBlob(),59,70,"STUDENT PHOTO");
+  pdfV6Image_(cells[2],photoFile.getBlob(),61,75,"STUDENT PHOTO");
   if(p.courseLogoFileId){
    const logo=DriveApp.getFileById(p.courseLogoFileId);
    if(!inFolder_(logo,DRIVE_FOLDERS.logos))throw Error("Unrecognized course logo");
-   pdfV6Image_(cells[3],logo.getBlob(),68,68,"COURSE LOGO");
+   pdfV6Image_(cells[3],logo.getBlob(),84,84,"COURSE LOGO");
   }else pdfV6Para_(cells[3].getChild(0).asParagraph(),7,false);
   const title=body.appendParagraph(isAdmission?
     "STUDENT ADMISSION APPLICATION FORM":"ECCE SCHOLARSHIP REGISTRATION FORM");
@@ -312,6 +318,11 @@ function buildStaffPdf_(p,photoFile,existingPdf){
   }
   doc.saveAndClose();
   const pdfBlob=DriveApp.getFileById(doc.getId()).getAs(MimeType.PDF).setName(fileName);
+  // Google Docs sometimes adds an overflow sheet silently. Prevent releasing
+  // a multipage registration when the form is required to be one A4 sheet.
+  const rawPdf=pdfBlob.getDataAsString("ISO-8859-1");
+  const pageObjects=(rawPdf.match(/\\/Type\\s*\\/Page\\b/g)||[]).length;
+  if(pageObjects>1)throw Error("PDF layout overflow: generated "+pageObjects+" pages instead of one A4 page. Check field lengths/template.");
   const pdf=folder.createFile(pdfBlob);
   if(pdf.getMimeType()!==MimeType.PDF||pdf.getSize()<500)throw Error("Generated PDF invalid");
   return pdf;
