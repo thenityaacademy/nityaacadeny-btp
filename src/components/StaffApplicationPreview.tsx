@@ -123,30 +123,18 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
     }catch(e){setSubmitError(e instanceof Error?e.message:"Form submission failed");}
     finally{setSubmitting(false);}
   };
-  const downloadPdf=()=>{if(receipt?.pdfUrl)window.open(receipt.pdfUrl,"_blank","noopener,noreferrer");};
-  const shareWhatsApp=async()=>{
+  // The WhatsApp deep link must open synchronously from the user click.
+  // Awaiting PDF fetch first causes popup blockers in desktop browsers.
+  // WhatsApp links can prefill text, but cannot attach a private PDF file.
+  const openWhatsApp=()=>{
     if(!receipt)return;
     const recipient=(recipientNumber||values.whatsapp||values.mobile||receipt.mobile||"").replace(/\D/g,"");
-    if(recipient.length!==10||!/^[6-9]/.test(recipient)){
-      setSubmitError("Please enter a valid 10-digit Indian WhatsApp number.");
+    if(!/^[6-9][0-9]{9}$/.test(recipient)){
+      setSubmitError("Enter a valid 10-digit Indian WhatsApp number to open the prepared message.");
       return;
     }
+    setSubmitError("");
     const url="https://wa.me/91"+recipient+"?text="+encodeURIComponent(whatsappMessage);
-    if(receipt.pdfReady&&receipt.pdfUrl&&navigator.share){
-      try{
-        const response=await fetch(receipt.pdfUrl,{credentials:"include",cache:"no-store"});
-        if(!response.ok)throw Error("Cannot fetch PDF for sharing");
-        const blob=await response.blob();
-        const file=new File([blob],"Nitya-Academy-"+receipt.number+".pdf",{type:"application/pdf"});
-        if(navigator.canShare?.({files:[file]})){
-          await navigator.share({files:[file],title:"Nitya Academy Form",text:whatsappMessage});
-          return;
-        }
-      }catch(e){
-        if(e instanceof Error&&e.name==="AbortError")return;
-        setSubmitError("PDF sharing needs a supported device. Download the PDF and attach it manually in WhatsApp.");
-      }
-    }
     window.open(url,"_blank","noopener,noreferrer");
   };
   const error=submitError;
@@ -381,13 +369,13 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
           className="mt-1 block rounded-lg border bg-white px-3 py-2 w-full sm:max-w-xs"/>
       </label>
       <div className="flex flex-wrap gap-2">
-        {receipt.pdfReady&&receipt.pdfUrl&&<button type="button" onClick={downloadPdf}
+        {receipt.pdfReady&&receipt.pdfUrl&&<a href={receipt.pdfUrl}
           className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2">
           <Download size={16}/> Download PDF
-        </button>}
-        {receipt.pdfReady&&<button type="button" onClick={()=>void shareWhatsApp()}
+        </a>}
+        {receipt.pdfReady&&<button type="button" onClick={openWhatsApp}
           className="border rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2">
-          <MessageCircle size={16}/> Share English Message + PDF
+          <MessageCircle size={16}/> Open WhatsApp (English Message)
         </button>}
         {(!receipt.pdfReady||receipt.sheetStatus!=="synced")&&<button type="button"
           disabled={submitting} onClick={()=>void submissionAction(true)}
@@ -395,7 +383,7 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
           <RefreshCcw size={16}/> Retry PDF / Sheet Processing
         </button>}
       </div>
-      <p className="text-xs text-slate-600">On supported mobile devices the PDF can be shared as a file. Otherwise download it and attach it manually to WhatsApp; sending is never automatic.</p>
+      <p className="text-xs text-slate-600">First download the private PDF, then open WhatsApp with the prepared English message and attach the downloaded PDF manually before pressing Send. WhatsApp does not support attaching this private file via a message link.</p>
     </div>}
     {!receipt&&<button type="submit"
       disabled={!config.submissionsEnabled||submitting||!photoRef||!photoConsent||!termsAccepted}
