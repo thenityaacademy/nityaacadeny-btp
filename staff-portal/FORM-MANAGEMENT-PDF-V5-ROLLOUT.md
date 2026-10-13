@@ -1,3 +1,46 @@
+# Urgent PDF V5.1 correction (2026-10-13)
+
+**The former V5 code had a verified 46-page Admission / 41-page Scholarship
+pagination bug.** `Paragraph.setLineSpacing(100)` and `(110)` meant 100 and
+110 *lines*, not percent. Google Apps Script's DocumentApp uses line multipliers.
+The current `staff-portal/google-apps-script-finalize-v5.gs` in **main** after
+the V5.1 release uses `setLineSpacing(1.0)` and `setLineSpacing(1.1)`.
+DO NOT redeploy an earlier copy of PhotoDraft.gs.
+
+### One owner-only Apps Script update (same existing Web App)
+
+1. Backup `PhotoDraft.gs`. Replace its contents with the complete latest
+   `staff-portal/google-apps-script-finalize-v5.gs` file from GitHub **main**.
+2. In `Code.gs`, find the EXISTING `case "staffPdfV5Ready":` and modify
+   ONLY its return marker:
+   `result={success:true,code:"STAFF_PDF_V5_1_READY"};`
+   Do not add a duplicate case. Do not edit existing spreadsheet ID or secrets.
+3. Save. Select `testStaffPdfV5` and Run. Confirm no error.
+4. **Deploy > Manage deployments > Edit existing Web App > New version > Deploy**;
+   DO NOT create a new URL or new deployment.
+5. In Live Staff Portal > My Submitted Forms, each 41/46-page old form has
+   **Rebuild Compact PDF**. Click once per existing form AFTER Apps Script
+   V5.1 is deployed. The Registration Number stays unchanged, old private PDF
+   moves to Trash, and the new PDF is held privately in the same folder.
+6. Download the rebuilt Admission AND Scholarship forms and confirm actual
+   page count; expected approximately 1-2 pages, but verify before declaring
+   done. If unexpectedly long, stop submitting new forms and report the page
+   count. No need to create a second registration number.
+
+### WhatsApp PDF + English message
+
+The plain `wa.me` link can only prefill text. New Staff UI offers
+`Prepare PDF + Message Share` followed by `Share PDF + English Message`
+through the native Web Share API on browsers that support `navigator.canShare`
+with PDF files. Choose WhatsApp and the appropriate recipient **manually**.
+Some mobile WhatsApp versions ignore a shared text caption when a file is
+included; confirm the text and attachment in WhatsApp before pressing Send.
+On desktop or unsupported mobile, download the PDF and attach it to the
+prepared WhatsApp message. Automatic, server-originated PDF delivery needs
+separate WhatsApp Business Platform API setup and recipient opt-in.
+
+---
+
 # Nitya Academy — Staff Form Management & Professional PDF V5
 
 ## What changes
