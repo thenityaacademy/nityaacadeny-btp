@@ -428,13 +428,16 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
   }
  }
  if(request.method==="GET"&&path==="/api/staff/applications"){
-  const hidden=new URL(request.url).searchParams.get("removed")==="1";
+  const params=new URL(request.url).searchParams;
+  const hidden=params.get("removed")==="1";
+  const kind=params.get("kind");
+  if(kind!=="admission"&&kind!=="scholarship")return bad("Select admission or scholarship records",400);
   const rows=await env.DB.prepare(
    "SELECT id,kind,form_number,student_name,mobile,pdf_drive_id,document_status,"+
    "sheet_sync_status,created_at,revision_number,revised_at,staff_hidden_at FROM student_applications "+
-   "WHERE staff_id=? AND "+(hidden?"staff_hidden_at IS NOT NULL":"staff_hidden_at IS NULL")+" "+
+   "WHERE staff_id=? AND kind=? AND "+(hidden?"staff_hidden_at IS NOT NULL":"staff_hidden_at IS NULL")+" "+
    "ORDER BY created_at DESC LIMIT 60"
-  ).bind(staff.id).all<Record<string,unknown>>();
+  ).bind(staff.id,kind).all<Record<string,unknown>>();
   return json({applications:rows.results,removed:hidden});
  }
  if(request.method==="GET"&&path.startsWith("/api/staff/pdf/")){
