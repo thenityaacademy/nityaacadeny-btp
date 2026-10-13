@@ -64,6 +64,7 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
     finally{setPhotoBusy(false);}
   };
   const removePhoto=async()=>{
+    if(receipt)return;
     if(!photoRef){setSelectedPhoto(null);setPhotoConsent(false);setPhotoMessage("");return;}
     if(photoBusy)return;
     setPhotoBusy(true);setPhotoError("");setPhotoMessage("");
@@ -349,16 +350,16 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
         Private Drive upload is not enabled yet. This image stays only in your browser until you close this preview.
       </p>}
       {photoRef&&<p className="text-xs text-slate-600 flex items-center gap-2">
-        <ShieldCheck size={16}/> Staff-owned private draft. Expires {photoExpiresAt?new Date(photoExpiresAt).toLocaleString("en-IN"):"within 48 hours"}. It is not yet linked to a submitted form.
+        <ShieldCheck size={16}/> {receipt?(receipt.pdfReady?"Photo securely attached to submitted form "+receipt.number+".":"Form recorded; photo finalization is pending. Use Retry PDF / Sheet Processing."):"Staff-owned private draft. Expires "+(photoExpiresAt?new Date(photoExpiresAt).toLocaleString("en-IN"):"within 48 hours")+". It is not yet linked to a submitted form."}
       </p>}
-      {selectedPhoto&&<button type="button" disabled={photoBusy}
+      {selectedPhoto&&!receipt&&<button type="button" disabled={photoBusy}
         onClick={()=>void removePhoto()}
         className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm text-red-700 disabled:opacity-50">
         <Trash2 size={16}/>{photoRef?"Remove Private Draft":"Clear Selected Photo"}
       </button>}
       {photoError&&<p role="alert" className="text-sm text-red-700 rounded-lg bg-red-50 p-3">{photoError}</p>}
-      {photoMessage&&<p role="status" className="text-sm text-green-800 rounded-lg bg-green-50 p-3">{photoMessage}</p>}
-      <p className="text-xs text-slate-500">A private photo draft will be deleted after expiry; remove unused photos sooner using the button above.</p>
+      {photoMessage&&!receipt&&<p role="status" className="text-sm text-green-800 rounded-lg bg-green-50 p-3">{photoMessage}</p>}
+      {!receipt&&<p className="text-xs text-slate-500">Unused private photo drafts expire after 48 hours. Remove unused photos with the button above.</p>}
     </section>
     {terms&&<p className="text-sm text-slate-600 whitespace-pre-wrap p-4 bg-slate-50 rounded-xl">{terms}</p>}
     <label className="flex gap-2 text-sm items-start">
