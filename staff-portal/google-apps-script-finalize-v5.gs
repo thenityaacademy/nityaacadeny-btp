@@ -159,7 +159,7 @@ function finalizeStudentDocuments_(p){
  */
 function pdfV5Text_(cell,size,bold,color) {
   const paragraph=cell.getChild(0).asParagraph();
-  paragraph.setSpacingBefore(0).setSpacingAfter(1).setLineSpacing(1.0);
+  paragraph.setSpacingBefore(0).setSpacingAfter(1).setLineSpacing(100);
   const txt=paragraph.editAsText();
   txt.setFontFamily("Arial").setFontSize(size||9);
   if(bold)txt.setBold(true);
@@ -205,7 +205,7 @@ function pdfV5Photo_(cell,blob,maxW,maxH) {
 }
 function pdfV5Paragraph_(body,text,size,bold,color,align){
   const paragraph=body.appendParagraph(String(text||""));
-  paragraph.setSpacingAfter(3).setSpacingBefore(2).setLineSpacing(1.1);
+  paragraph.setSpacingAfter(3).setSpacingBefore(2).setLineSpacing(110);
   if(align)paragraph.setAlignment(align);
   const t=paragraph.editAsText();
   t.setFontFamily("Arial").setFontSize(size||9);
@@ -213,13 +213,18 @@ function pdfV5Paragraph_(body,text,size,bold,color,align){
   if(color)t.setForegroundColor(color);
   return paragraph;
 }
+function pdfV5FileName_(p){
+ const base="Nitya Academy "+(p.type==="admission"?"Admission":"ECCE Scholarship")+" - "+p.formNumber;
+ const revision=Number(p.revisionNumber)||0;
+ return base+(revision>0?" - Corrected-"+revision:"")+".pdf";
+}
 function buildStaffPdf_(p,photoFile,existingPdf){
  if(existingPdf)return existingPdf;
  if(!["admission","scholarship"].includes(p.type)||!p.formNumber)throw Error("Invalid form PDF request");
  const v=p.fields||{};
  const isAdmission=p.type==="admission";
  const folder=getFolder_(isAdmission?"admissions":"scholarships","pdfs");
- const fileName="Nitya Academy "+(isAdmission?"Admission":"ECCE Scholarship")+" - "+p.formNumber+".pdf";
+ const fileName=pdfV5FileName_(p);
  const doc=DocumentApp.create("NITYA PDF TEMP - "+p.formNumber+" - "+p.recordId);
  try{
   const b=doc.getBody();
@@ -243,7 +248,7 @@ function buildStaffPdf_(p,photoFile,existingPdf){
   const phone=middle.appendParagraph("9680008384 | 9802813444");
   phone.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
   phone.editAsText().setFontFamily("Arial").setFontSize(7.5).setBold(true);
-  pdfV5ImageSafe_(right,photoFile.getBlob(),75,92,"STUDENT PHOTO");
+  pdfV5Photo_(right,photoFile.getBlob(),75,92);
   if(p.courseLogoFileId){
     const logo=DriveApp.getFileById(p.courseLogoFileId);
     if(!inFolder_(logo,DRIVE_FOLDERS.logos))throw Error("Unrecognized course logo");
@@ -383,8 +388,9 @@ function reviseStudentDocuments_(p){
  const previous=DriveApp.getFileById(p.existingPdfFileId);
  if(!inFolder_(previous,pdfFolder.getId())||previous.getMimeType()!==MimeType.PDF)
    throw Error("Previous PDF does not belong to the private Form folder");
- const expectedName="Nitya Academy "+(p.type==="admission"?"Admission":"ECCE Scholarship")+" - "+p.formNumber+".pdf";
- if(previous.getName()!==expectedName)throw Error("Previous form number mismatch");
+ const expectedName=pdfV5FileName_(p);
+ const baseName="Nitya Academy "+(p.type==="admission"?"Admission":"ECCE Scholarship")+" - "+p.formNumber;
+ if(!previous.getName().startsWith(baseName)||!previous.getName().endsWith(".pdf"))throw Error("Previous form number mismatch");
  // Retry-safe lookup: after an interrupted PDF pointer update, an already
  // generated replacement may be in the same private folder.
  let current=null;
