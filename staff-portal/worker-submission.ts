@@ -139,10 +139,11 @@ async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
   photoFileId=String(doc.photoFileId||"");
   pdfFileId=String(doc.pdfFileId||"");
   if(!photoFileId||!pdfFileId)throw Error("PDF storage returned an incomplete reference");
-  await env.DB.prepare(
+  const savedPdf=await env.DB.prepare(
    "UPDATE student_applications SET photo_drive_id=?,pdf_drive_id=?,document_status='ready',"+
    "document_last_error=NULL WHERE id=? AND staff_id=? AND revision_number=?"
   ).bind(photoFileId,pdfFileId,row.id,staff.id,row.revision_number).run();
+  if(savedPdf.meta?.changes!==1)throw Error("Form revision changed during PDF generation. Refresh and retry.");
   // This ID now belongs to permanent application; do not let expiry cleanup trash it.
   if(draft)await env.DB.prepare("DELETE FROM staff_photo_drafts WHERE id=? AND staff_id=?")
    .bind(row.photo_draft_id,staff.id).run();
@@ -151,7 +152,7 @@ async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
   try{
    const sheet=await driveRequest(env,{
     action:"upsert",recordId:row.id,type:row.kind,formNumber:row.form_number,
-    createdAt:row.created_at,studentName:row.student_name,mobile:row.mobile,
+    createdAt:row.created_at,studentName:fields.studentName||row.student_name,mobile:fields.mobile||row.mobile,
     staffId:staff.id,staffName:staff.name,fields:{...fields,course:fields.courseName||fields.course,termsAccepted:"Yes"},
     photoFileId,pdfFileId
    });
