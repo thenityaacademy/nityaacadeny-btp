@@ -186,7 +186,7 @@ function pdfWordCell_(cell,fontSize,bold,padding){
       .setPaddingLeft(3).setPaddingRight(3).setBackgroundColor("#FFFFFF");
   return pdfWordPara_(cell.getChild(0).asParagraph(),fontSize||8.6,bold);
 }
-function pdfWordTable_(parent,rows,widths,fontSize,padding){
+function pdfWordTable_(parent,rows,widths,fontSize,padding,minRowHeight){
   var table=parent.appendTable(rows);
   table.setBorderColor("#000000").setBorderWidth(0.65);
   if(widths){
@@ -196,6 +196,7 @@ function pdfWordTable_(parent,rows,widths,fontSize,padding){
     for(var c=0;c<rows[r].length;c++){
       pdfWordCell_(table.getRow(r).getCell(c),fontSize||9.7,c%2===0,padding===undefined?3:padding);
     }
+    if(minRowHeight)table.getRow(r).setMinimumHeight(minRowHeight);
   }
   return table;
 }
@@ -213,13 +214,14 @@ function pdfWordImage_(cell,blob,maxWidth,maxHeight,alt,align){
   }
 }
 function pdfWordSection_(body,heading,pairs,scholarship){
-  pdfWordGap_(body,scholarship?9:7);
+  pdfWordGap_(body,scholarship?7:6);
   var title=body.appendTable([[heading.toUpperCase()]]);
   title.setBorderColor("#000000").setBorderWidth(0.65);
   var headCell=title.getCell(0,0);
   headCell.setBackgroundColor("#FFFFFF").setPaddingTop(3)
        .setPaddingBottom(3).setPaddingLeft(4).setPaddingRight(4);
-  pdfWordPara_(headCell.getChild(0).asParagraph(),10.3,true);
+  pdfWordPara_(headCell.getChild(0).asParagraph(),11.0,true);
+  title.getRow(0).setMinimumHeight(20);
   var rows=[];
   for(var i=0;i<pairs.length;i+=2){
     var a=pairs[i],b=pairs[i+1]||["",""];
@@ -227,7 +229,7 @@ function pdfWordSection_(body,heading,pairs,scholarship){
       String(a[0]),pdfWordVal_(a[1]),String(b[0]),pdfWordVal_(b[1])
     ]);
   }
-  if(rows.length)pdfWordTable_(body,rows,[141,140,141,140],scholarship?10.1:9.6,scholarship?3.8:3.1);
+  if(rows.length)pdfWordTable_(body,rows,[141,140,141,140],scholarship?11.1:10.5,scholarship?4:3.6,scholarship?22:19);
   title.setColumnWidth(0,562);
 }
 function pdfWordVal_(value){
@@ -256,7 +258,7 @@ function buildStaffPdf_(p,photoFile,existingPdf){
     var pageFrame=body.appendTable([[""]]);
     pageFrame.setBorderColor("#000000").setBorderWidth(0.9);
     pageFrame.setColumnWidth(0,575);
-    pageFrame.getRow(0).setMinimumHeight(790);
+    pageFrame.getRow(0).setMinimumHeight(775);
     var canvas=pageFrame.getCell(0,0);
     canvas.setPaddingTop(5).setPaddingBottom(5).setPaddingLeft(6).setPaddingRight(6);
     pdfWordPara_(canvas.getChild(0).asParagraph(),1,false);
@@ -371,7 +373,7 @@ function buildStaffPdf_(p,photoFile,existingPdf){
       "This form alone does not guarantee admission, scholarship selection or payment verification."
     ),8.8,false).setSpacingAfter(3);
 
-    pdfWordGap_(content,isAdmission?11:16);
+    pdfWordGap_(content,isAdmission?14:19);
     var signature=content.appendTable([[
       "Student / Guardian Signature: __________________",
       "For Nitya Academy: __________________"
@@ -379,12 +381,13 @@ function buildStaffPdf_(p,photoFile,existingPdf){
     signature.setBorderColor("#000000").setBorderWidth(0.7);
     signature.setColumnWidth(0,281);
     signature.setColumnWidth(1,281);
+    signature.getRow(0).setMinimumHeight(55);
     for(var si=0;si<2;si++){
       var sc=signature.getRow(0).getCell(si);
-      sc.setPaddingTop(21).setPaddingBottom(14).setPaddingLeft(7).setPaddingRight(4);
-      pdfWordPara_(sc.getChild(0).asParagraph(),10,false);
+      sc.setPaddingTop(25).setPaddingBottom(19).setPaddingLeft(7).setPaddingRight(4);
+      pdfWordPara_(sc.getChild(0).asParagraph(),11,false);
     }
-    pdfWordGap_(content,6);
+    pdfWordGap_(content,7);
     pdfWordPara_(content.appendParagraph(
       "NITYA ACADEMY, BHARATPUR  |  Retain your Registration Number and PDF for your records."
     ),7,false,DocumentApp.HorizontalAlignment.CENTER);
@@ -403,7 +406,7 @@ function buildStaffPdf_(p,photoFile,existingPdf){
       // changing any submitted values or registration number.
       var tightDoc=DocumentApp.openById(doc.getId());
       var tighterFrame=tightDoc.getBody().getTables()[0];
-      if(tighterFrame)tighterFrame.getRow(0).setMinimumHeight(745);
+      if(tighterFrame)tighterFrame.getRow(0).setMinimumHeight(755);
       pdfWordTighten_(tightDoc.getBody());
       tightDoc.saveAndClose();
       pdfBlob=DriveApp.getFileById(doc.getId()).getAs(MimeType.PDF).setName(fileName);
@@ -423,30 +426,38 @@ function buildStaffPdf_(p,photoFile,existingPdf){
  * page. This second pass tightens only whitespace and table cell padding;
  * all original fields, image pixels, and black-outline Word styling remain.
  */
+/** Gentle A4 fallback only: keep readable fonts, logos, and tall sign box.
+ * Never zero every cell padding as the old fallback did. */
 function pdfWordTighten_(body){
-  function walk(element){
-    var kind=element.getType();
-    if(kind===DocumentApp.ElementType.PARAGRAPH){
-      element.setSpacingBefore(0).setSpacingAfter(0).setLineSpacing(1);
-      if(!element.getText().trim())element.editAsText().setFontSize(1);
-      return;
-    }
-    if(kind===DocumentApp.ElementType.TABLE_CELL){
-      element.setPaddingTop(0).setPaddingBottom(0);
-    }
-    if(kind===DocumentApp.ElementType.TABLE){
-      for(var i=0;i<element.getNumRows();i++)walk(element.getRow(i));
-      return;
-    }
-    if(kind===DocumentApp.ElementType.TABLE_ROW){
-      for(var j=0;j<element.getNumCells();j++)walk(element.getCell(j));
-      return;
-    }
-    if(typeof element.getNumChildren==="function"){
-      for(var k=0;k<element.getNumChildren();k++)walk(element.getChild(k));
+  var frame=body.getTables()[0];
+  if(!frame)return;
+  frame.getRow(0).setMinimumHeight(755);
+  var canvas=frame.getCell(0,0);
+  function visit(element){
+    var t=element.getType();
+    if(t===DocumentApp.ElementType.TABLE){
+      var rowCount=element.getNumRows();
+      if(rowCount>=1 && element.getRow(0).getNumCells()===4 && rowCount!==2){
+        for(var i=0;i<rowCount;i++){
+          var row=element.getRow(i);
+          row.setMinimumHeight(18);
+          for(var j=0;j<4;j++){
+            var c=row.getCell(j);
+            c.setPaddingTop(2).setPaddingBottom(2);
+          }
+        }
+      }else if(rowCount===1&&element.getRow(0).getNumCells()===1){
+        element.getRow(0).setMinimumHeight(18);
+      }
+      for(var n=0;n<rowCount;n++)visit(element.getRow(n));
+    }else if(t===DocumentApp.ElementType.TABLE_ROW){
+      for(var k=0;k<element.getNumCells();k++)visit(element.getCell(k));
+    }else if(t===DocumentApp.ElementType.TABLE_CELL){
+      for(var l=0;l<element.getNumChildren();l++)visit(element.getChild(l));
     }
   }
-  walk(body);
+  // Include nested tables but don't touch registration's 47pt photo-aligned rows.
+  for(var c=0;c<canvas.getNumChildren();c++)visit(canvas.getChild(c));
 }
 
 /** Called by Code.gs web-app router: must be wired for action staffPdfV6Ready. */
