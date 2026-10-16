@@ -175,11 +175,10 @@ function pdfWordPara_(paragraph,fontSize,bold,alignment){
   return paragraph;
 }
 function pdfWordGap_(body,amount){
-  // Google Docs counts a blank paragraph's line height *and* the spacing after
-  // it. The previous 8pt+8pt gaps pushed valid forms onto page two.
+  // A small controlled separator, not a full-height blank paragraph.
   var p=body.appendParagraph("");
   pdfWordPara_(p,2,false);
-  p.setSpacingBefore(0).setSpacingAfter(Math.min(3,Math.max(1,Math.round((amount||4)/3))));
+  p.setSpacingBefore(0).setSpacingAfter(Math.max(1,amount||4));
 }
 function pdfWordCell_(cell,fontSize,bold,padding){
   var pad=padding===undefined?1:padding;
@@ -187,7 +186,7 @@ function pdfWordCell_(cell,fontSize,bold,padding){
       .setPaddingLeft(3).setPaddingRight(3).setBackgroundColor("#FFFFFF");
   return pdfWordPara_(cell.getChild(0).asParagraph(),fontSize||8.6,bold);
 }
-function pdfWordTable_(parent,rows,widths,fontSize){
+function pdfWordTable_(parent,rows,widths,fontSize,padding){
   var table=parent.appendTable(rows);
   table.setBorderColor("#000000").setBorderWidth(0.65);
   if(widths){
@@ -195,7 +194,7 @@ function pdfWordTable_(parent,rows,widths,fontSize){
   }
   for(var r=0;r<rows.length;r++){
     for(var c=0;c<rows[r].length;c++){
-      pdfWordCell_(table.getRow(r).getCell(c),fontSize||8.6,c%2===0,1);
+      pdfWordCell_(table.getRow(r).getCell(c),fontSize||9.7,c%2===0,padding===undefined?3:padding);
     }
   }
   return table;
@@ -214,13 +213,13 @@ function pdfWordImage_(cell,blob,maxWidth,maxHeight,alt,align){
   }
 }
 function pdfWordSection_(body,heading,pairs,scholarship){
-  pdfWordGap_(body,scholarship?8:7);
+  pdfWordGap_(body,scholarship?9:7);
   var title=body.appendTable([[heading.toUpperCase()]]);
   title.setBorderColor("#000000").setBorderWidth(0.65);
   var headCell=title.getCell(0,0);
-  headCell.setBackgroundColor("#FFFFFF").setPaddingTop(1)
-       .setPaddingBottom(1).setPaddingLeft(4).setPaddingRight(4);
-  pdfWordPara_(headCell.getChild(0).asParagraph(),9,true);
+  headCell.setBackgroundColor("#FFFFFF").setPaddingTop(3)
+       .setPaddingBottom(3).setPaddingLeft(4).setPaddingRight(4);
+  pdfWordPara_(headCell.getChild(0).asParagraph(),10.3,true);
   var rows=[];
   for(var i=0;i<pairs.length;i+=2){
     var a=pairs[i],b=pairs[i+1]||["",""];
@@ -228,7 +227,8 @@ function pdfWordSection_(body,heading,pairs,scholarship){
       String(a[0]),pdfWordVal_(a[1]),String(b[0]),pdfWordVal_(b[1])
     ]);
   }
-  if(rows.length)pdfWordTable_(body,rows,[130,145,127,154],8.5);
+  if(rows.length)pdfWordTable_(body,rows,[141,140,141,140],scholarship?10.1:9.6,scholarship?3.8:3.1);
+  title.setColumnWidth(0,562);
 }
 function pdfWordVal_(value){
   if(value===undefined||value===null||String(value).trim()==="")return "—";
@@ -249,17 +249,28 @@ function buildStaffPdf_(p,photoFile,existingPdf){
   try{
     var body=doc.getBody();
     body.setPageWidth(595.28).setPageHeight(841.89);
-    body.setMarginTop(11).setMarginBottom(11).setMarginLeft(17).setMarginRight(17);
+    body.setMarginTop(10).setMarginBottom(10).setMarginLeft(10).setMarginRight(10);
+
+    // One actual enclosing table creates the black PAGE BORDER. It spans
+    // almost all of the A4 page, unlike individual floating section outlines.
+    var pageFrame=body.appendTable([[""]]);
+    pageFrame.setBorderColor("#000000").setBorderWidth(0.9);
+    pageFrame.setColumnWidth(0,575);
+    pageFrame.getRow(0).setMinimumHeight(790);
+    var canvas=pageFrame.getCell(0,0);
+    canvas.setPaddingTop(5).setPaddingBottom(5).setPaddingLeft(6).setPaddingRight(6);
+    pdfWordPara_(canvas.getChild(0).asParagraph(),1,false);
+    var content=canvas;
 
     // Word reference top header: logos flank centered institute name.
-    var h=body.appendTable([["","NITYA ACADEMY",""]]);
+    var h=content.appendTable([["","NITYA ACADEMY",""]]);
     h.setBorderWidth(0);
-    [105,332,124].forEach(function(w,i){h.setColumnWidth(i,w);});
+    [96,299,167].forEach(function(w,i){h.setColumnWidth(i,w);});
     var hl=h.getCell(0,0),hc=h.getCell(0,1),hr=h.getCell(0,2);
     [hl,hc,hr].forEach(function(c){
       c.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(1).setPaddingRight(1);
     });
-    pdfWordImage_(hl,DriveApp.getFileById(DRIVE_FOLDERS.mainLogo).getBlob(),80,78,
+    pdfWordImage_(hl,DriveApp.getFileById(DRIVE_FOLDERS.mainLogo).getBlob(),87,87,
       "NITYA ACADEMY",DocumentApp.HorizontalAlignment.LEFT);
     pdfWordPara_(hc.getChild(0).asParagraph(),17,true,DocumentApp.HorizontalAlignment.CENTER);
     [
@@ -267,30 +278,30 @@ function buildStaffPdf_(p,photoFile,existingPdf){
       "Near Ketan Gate, Sahyog Nagar, Bharatpur - 321001",
       "9680008384 | 9802813444"
     ].forEach(function(line,index){
-      pdfWordPara_(hc.appendParagraph(line),index===0?9.2:8.7,index===0,
+      pdfWordPara_(hc.appendParagraph(line),index===0?10:9.2,index===0,
         DocumentApp.HorizontalAlignment.CENTER);
     });
     if(p.courseLogoFileId){
       var logo=DriveApp.getFileById(p.courseLogoFileId);
       if(!inFolder_(logo,DRIVE_FOLDERS.logos))throw Error("Invalid private programme logo");
-      pdfWordImage_(hr,logo.getBlob(),120,72,"PROGRAMME LOGO",DocumentApp.HorizontalAlignment.RIGHT);
+      pdfWordImage_(hr,logo.getBlob(),158,87,"PROGRAMME LOGO",DocumentApp.HorizontalAlignment.RIGHT);
     }else pdfWordPara_(hr.getChild(0).asParagraph(),8,false);
 
-    pdfWordGap_(body,3);
-    pdfWordPara_(body.appendParagraph(
+    pdfWordGap_(content,3);
+    pdfWordPara_(content.appendParagraph(
       isAdmission?"STUDENT ADMISSION APPLICATION FORM":"ECCE SCHOLARSHIP REGISTRATION FORM"
     ),11,true,DocumentApp.HorizontalAlignment.CENTER);
 
     // Word reference registration area: portrait in LEFT block, two data
     // rows on RIGHT. Nested table avoids a line cutting across the portrait.
-    pdfWordGap_(body,5);
-    var registration=body.appendTable([["",""]]);
+    pdfWordGap_(content,5);
+    var registration=content.appendTable([["",""]]);
     registration.setBorderWidth(0);
-    registration.setColumnWidth(0,78);
-    registration.setColumnWidth(1,476);
+    registration.setColumnWidth(0,91);
+    registration.setColumnWidth(1,471);
     var photoCell=registration.getCell(0,0);
     photoCell.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(0).setPaddingRight(3);
-    pdfWordImage_(photoCell,photoFile.getBlob(),69,78,
+    pdfWordImage_(photoCell,photoFile.getBlob(),84,94,
       "STUDENT PHOTO",DocumentApp.HorizontalAlignment.CENTER);
     var detailCell=registration.getCell(0,1);
     detailCell.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(0).setPaddingRight(0);
@@ -299,20 +310,22 @@ function buildStaffPdf_(p,photoFile,existingPdf){
         String(p.createdAt||"").slice(0,19).replace("T"," ")],
       ["PROGRAMME",v.courseName||v.course||(isAdmission?"—":"ECCE Scholarship"),
         "STATUS","SUBMITTED"]
-    ],[128,115,101,125],8.8);
+    ],[125,111,105,130],10.2,5);
+    nested.getRow(0).setMinimumHeight(47);
+    nested.getRow(1).setMinimumHeight(47);
     nested.getRow(0).getCell(1).getChild(0).asParagraph().editAsText().setBold(true);
     if(detailCell.getChild(0).getType()===DocumentApp.ElementType.PARAGRAPH &&
        detailCell.getNumChildren()>1){
       detailCell.getChild(0).removeFromParent();
     }
 
-    pdfWordSection_(body,"1. PERSONAL DETAILS",[
+    pdfWordSection_(content,"1. PERSONAL DETAILS",[
       ["Student's Full Name",v.studentName],["Father's Name",v.fatherName],
       ["Mother's Name",v.motherName],["Date of Birth",v.dob],
       ["Gender",v.gender],["Aadhaar Number",v.aadhaar]
     ],!isAdmission);
 
-    pdfWordSection_(body,"2. CONTACT & ADDRESS",[
+    pdfWordSection_(content,"2. CONTACT & ADDRESS",[
       ["Mobile Number",v.mobile],["WhatsApp Number",v.whatsapp||v.mobile],
       ["Email",v.email],["PIN Code",v.pin],
       ["Village / City",v.city],["District",v.district],
@@ -320,7 +333,7 @@ function buildStaffPdf_(p,photoFile,existingPdf){
     ],!isAdmission);
 
     if(isAdmission){
-      pdfWordSection_(body,"3. EDUCATIONAL QUALIFICATIONS",[
+      pdfWordSection_(content,"3. EDUCATIONAL QUALIFICATIONS",[
         ["10th Passed?",v.passed10],["10th Board",v.board10],
         ["10th Passing Year",v.year10],["10th Marks (%)",v.percent10],
         ["12th Passed?",v.passed12],["12th Board",v.board12],
@@ -328,55 +341,55 @@ function buildStaffPdf_(p,photoFile,existingPdf){
         ["Last Qualification",v.lastQualification],["Board / University",v.lastBoard],
         ["Last Passing Year",v.lastYear],["Percentage",v.lastPercent]
       ],false);
-      pdfWordSection_(body,"4. ADMISSION & FEES",[
+      pdfWordSection_(content,"4. ADMISSION & FEES",[
         ["Programme",v.courseName||v.course],["Academic Session",v.session],
         ["Total Course Fees (INR)",v.totalFees],["Practical Fees Applicable?",v.practicalApplicable],
         ["Practical Fees (INR)",v.practicalFee],["External Reference?",v.hasReference],
         ["Reference Name",v.referenceName],["Staff ID",p.staffId]
       ],false);
     }else{
-      pdfWordSection_(body,"3. QUALIFICATION & SCHOLARSHIP",[
+      pdfWordSection_(content,"3. QUALIFICATION & SCHOLARSHIP",[
         ["12th Passed?","Yes"],["12th Passing Year",v.year12],
         ["Last Qualification",v.lastQualification],["Board / University",v.lastBoard],
         ["Last Passing Year",v.lastYear],["Percentage",v.lastPercent],
         ["Entrance Test Date",v.examDate],["Scholarship Programme","ECCE"]
       ],true);
-      pdfWordSection_(body,"4. REGISTRATION FEE RECORD",[
+      pdfWordSection_(content,"4. REGISTRATION FEE RECORD",[
         ["Registration Fee (INR)","100"],["Payment Mode",v.paymentMode],
         ["Transaction Reference",v.transactionRef],["Payment Status","Record Only"],
         ["Registration Date",v.registrationDate],["Staff ID",p.staffId]
       ],true);
     }
 
-    pdfWordSection_(body,"5. APPLICANT DECLARATION",[
+    pdfWordSection_(content,"5. APPLICANT DECLARATION",[
       ["Registration Number",p.formNumber],
       ["Recorded By",String(p.staffName||"")+" ("+String(p.staffId||"")+")"]
     ],!isAdmission);
-    pdfWordGap_(body,isAdmission?9:12);
-    pdfWordPara_(body.appendParagraph(
+    pdfWordGap_(content,isAdmission?9:12);
+    pdfWordPara_(content.appendParagraph(
       "I declare the information above is correct and consent to the applicable terms and conditions recorded in the Staff Portal. "+
       "This form alone does not guarantee admission, scholarship selection or payment verification."
     ),8.8,false).setSpacingAfter(3);
 
-    pdfWordGap_(body,isAdmission?10:20);
-    var signature=body.appendTable([[
+    pdfWordGap_(content,isAdmission?11:16);
+    var signature=content.appendTable([[
       "Student / Guardian Signature: __________________",
       "For Nitya Academy: __________________"
     ]]);
     signature.setBorderColor("#000000").setBorderWidth(0.7);
-    signature.setColumnWidth(0,278);
-    signature.setColumnWidth(1,278);
+    signature.setColumnWidth(0,281);
+    signature.setColumnWidth(1,281);
     for(var si=0;si<2;si++){
       var sc=signature.getRow(0).getCell(si);
-      sc.setPaddingTop(12).setPaddingBottom(7).setPaddingLeft(5).setPaddingRight(3);
-      pdfWordPara_(sc.getChild(0).asParagraph(),9,false);
+      sc.setPaddingTop(21).setPaddingBottom(14).setPaddingLeft(7).setPaddingRight(4);
+      pdfWordPara_(sc.getChild(0).asParagraph(),10,false);
     }
-    pdfWordGap_(body,5);
-    pdfWordPara_(body.appendParagraph(
+    pdfWordGap_(content,6);
+    pdfWordPara_(content.appendParagraph(
       "NITYA ACADEMY, BHARATPUR  |  Retain your Registration Number and PDF for your records."
     ),7,false,DocumentApp.HorizontalAlignment.CENTER);
     if(Number(p.revisionNumber)>0){
-      pdfWordPara_(body.appendParagraph(
+      pdfWordPara_(content.appendParagraph(
         "CORRECTED COPY  |  Revision "+String(p.revisionNumber)
       ),7,true,DocumentApp.HorizontalAlignment.CENTER);
     }
@@ -389,6 +402,8 @@ function buildStaffPdf_(p,photoFile,existingPdf){
       // One automatic compact pass protects long names/addresses without
       // changing any submitted values or registration number.
       var tightDoc=DocumentApp.openById(doc.getId());
+      var tighterFrame=tightDoc.getBody().getTables()[0];
+      if(tighterFrame)tighterFrame.getRow(0).setMinimumHeight(745);
       pdfWordTighten_(tightDoc.getBody());
       tightDoc.saveAndClose();
       pdfBlob=DriveApp.getFileById(doc.getId()).getAs(MimeType.PDF).setName(fileName);
