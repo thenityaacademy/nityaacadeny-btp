@@ -245,16 +245,17 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
    if(!row.photo_drive_id||!row.pdf_drive_id||row.document_status!=="ready")
      return bad("Form PDF is not ready. Retry PDF / Google Sheet processing first.",409);
    // Do not replace a working private PDF until owner has deployed the
-   // fixed 1.0 / 1.1 line spacing. V5 generated 41–46 page PDFs.
+   // one-page A4 Word-style template. Earlier V5 generated 41–46 page PDFs.
    try{
-     const bridge=await driveRequest(env,{action:"staffPdfV5Ready"});
-     if(bridge.code!=="STAFF_PDF_V5_1_READY")
-       return bad("The compact PDF V5.1 is not deployed. Admin must update Google Apps Script first.",503);
+     const bridge=await driveRequest(env,{action:"staffPdfV6Ready"});
+     if(bridge.code!=="STAFF_PDF_V6_READY")
+       return bad("The A4 Word-format PDF V6 is not deployed. Admin must update Google Apps Script first.",503);
    }catch{
-     return bad("Could not verify compact PDF V5.1. No data was changed.",503);
+     return bad("Could not verify A4 PDF V6. No data was changed.",503);
    }
    const update=await env.DB.prepare(
-     "UPDATE student_applications SET document_status='pending',document_last_error=NULL "+
+     "UPDATE student_applications SET document_status='pending',sheet_sync_status='pending',"+
+     "sheet_last_error=NULL,document_last_error=NULL "+
      "WHERE id=? AND staff_id=? AND staff_hidden_at IS NULL AND document_status='ready' AND revision_number=?"
    ).bind(row.id,staff.id,row.revision_number).run();
    if(update.meta?.changes!==1)return bad("Form changed during PDF regeneration. Refresh and retry.",409);
@@ -264,7 +265,7 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
      if(!saved)return bad("Form could not be reloaded.",503);
      return json({...receipt(saved),
        notice:saved.document_status==="ready"
-         ?"Compact PDF regenerated with the ORIGINAL Registration Number. Google Sheet was not renumbered."
+         ?"A4 PDF regenerated with the ORIGINAL Registration Number. Google Sheet was not renumbered."
          :"Regeneration pending; use Retry PDF / Sheet Processing."});
    }catch(err){
      console.error("Staff compact PDF regeneration pending",String(err).slice(0,130));
@@ -286,10 +287,10 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
    // Fail closed BEFORE any D1 edit if the newer private PDF bridge is not
    // deployed. Old V4 apps script would keep stale PDF data after a correction.
    try{
-     const bridge=await driveRequest(env,{action:"staffPdfV5Ready"});
-     if(bridge.code!=="STAFF_PDF_V5_1_READY")return bad("Compact PDF V5.1 must be deployed before editing saved forms.",503);
+     const bridge=await driveRequest(env,{action:"staffPdfV6Ready"});
+     if(bridge.code!=="STAFF_PDF_V6_READY")return bad("A4 PDF V6 must be deployed before editing saved forms.",503);
    }catch{
-     return bad("New professional PDF template is not yet activated. Admin must deploy Apps Script V5 before editing forms.",503);
+     return bad("New professional PDF template is not yet activated. Admin must deploy Apps Script V6 before editing forms.",503);
    }
    const oldFields=JSON.parse(row.fields_json) as Record<string,string>;
    const sanitized:Record<string,string>={...oldFields};

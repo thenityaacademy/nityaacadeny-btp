@@ -74,6 +74,17 @@ export default function StaffApplicationsHistory({kind,courses=[]}:{kind:"admiss
   }catch(e){setError(e instanceof Error?e.message:"Could not retry this application.");}
   finally{setBusy("");}
  };
+ const rebuildA4Pdf=async(row:Application)=>{
+  if(busy)return;
+  if(!window.confirm("Rebuild "+row.form_number+" as a NEW one-page A4 PDF using the Word format? Your existing Registration Number and Student details will remain unchanged."))return;
+  setBusy(row.id+"-a4");setError("");setNotice("");
+  try{
+   const result=await api("/api/staff/application/regenerate-pdf",post({recordId:row.id}));
+   setNotice(result.notice||"A4 PDF regeneration requested. Check status, then Download PDF.");
+   await reload();
+  }catch(e){setError(e instanceof Error?e.message:"A4 PDF rebuilding failed. Existing form number was not changed.");}
+  finally{setBusy("");}
+ };
  const downloadPdf=async(row:Application)=>{
   if(busy)return;
   setBusy(row.id+"-pdf");setError("");
@@ -217,6 +228,11 @@ export default function StaffApplicationsHistory({kind,courses=[]}:{kind:"admiss
       disabled={!!busy} onClick={()=>void downloadPdf(row)}
       className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm disabled:opacity-50">
       <Download size={16}/>{busy===row.id+"-pdf"?"Downloading...":"Download PDF"}
+    </button>}
+    {!removed&&row.document_status==="ready"&&row.pdf_drive_id&&<button type="button"
+      disabled={!!busy} onClick={()=>void rebuildA4Pdf(row)}
+      className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm disabled:opacity-50">
+      <RefreshCw size={16}/>{busy===row.id+"-a4"?"Rebuilding A4...":"Rebuild A4 PDF"}
     </button>}
     {!removed&&(row.sheet_sync_status!=="synced"||row.document_status!=="ready")&&<button
       type="button" disabled={!!busy} onClick={()=>void retry(row)}
