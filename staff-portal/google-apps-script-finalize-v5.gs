@@ -175,12 +175,14 @@ function pdfWordPara_(paragraph,fontSize,bold,alignment){
   return paragraph;
 }
 function pdfWordGap_(body,amount){
+  // Google Docs counts a blank paragraph's line height *and* the spacing after
+  // it. The previous 8pt+8pt gaps pushed valid forms onto page two.
   var p=body.appendParagraph("");
-  pdfWordPara_(p,Math.max(2,Math.min(amount||4,8)),false);
-  p.setSpacingAfter(amount||4);
+  pdfWordPara_(p,2,false);
+  p.setSpacingBefore(0).setSpacingAfter(Math.min(3,Math.max(1,Math.round((amount||4)/3))));
 }
 function pdfWordCell_(cell,fontSize,bold,padding){
-  var pad=padding===undefined?2:padding;
+  var pad=padding===undefined?1:padding;
   cell.setPaddingTop(pad).setPaddingBottom(pad)
       .setPaddingLeft(3).setPaddingRight(3).setBackgroundColor("#FFFFFF");
   return pdfWordPara_(cell.getChild(0).asParagraph(),fontSize||8.6,bold);
@@ -193,7 +195,7 @@ function pdfWordTable_(parent,rows,widths,fontSize){
   }
   for(var r=0;r<rows.length;r++){
     for(var c=0;c<rows[r].length;c++){
-      pdfWordCell_(table.getRow(r).getCell(c),fontSize||8.6,c%2===0,2);
+      pdfWordCell_(table.getRow(r).getCell(c),fontSize||8.6,c%2===0,1);
     }
   }
   return table;
@@ -216,8 +218,8 @@ function pdfWordSection_(body,heading,pairs,scholarship){
   var title=body.appendTable([[heading.toUpperCase()]]);
   title.setBorderColor("#000000").setBorderWidth(0.65);
   var headCell=title.getCell(0,0);
-  headCell.setBackgroundColor("#FFFFFF").setPaddingTop(2)
-       .setPaddingBottom(2).setPaddingLeft(4).setPaddingRight(4);
+  headCell.setBackgroundColor("#FFFFFF").setPaddingTop(1)
+       .setPaddingBottom(1).setPaddingLeft(4).setPaddingRight(4);
   pdfWordPara_(headCell.getChild(0).asParagraph(),9,true);
   var rows=[];
   for(var i=0;i<pairs.length;i+=2){
@@ -247,7 +249,7 @@ function buildStaffPdf_(p,photoFile,existingPdf){
   try{
     var body=doc.getBody();
     body.setPageWidth(595.28).setPageHeight(841.89);
-    body.setMarginTop(14).setMarginBottom(14).setMarginLeft(17).setMarginRight(17);
+    body.setMarginTop(11).setMarginBottom(11).setMarginLeft(17).setMarginRight(17);
 
     // Word reference top header: logos flank centered institute name.
     var h=body.appendTable([["","NITYA ACADEMY",""]]);
@@ -257,7 +259,7 @@ function buildStaffPdf_(p,photoFile,existingPdf){
     [hl,hc,hr].forEach(function(c){
       c.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(1).setPaddingRight(1);
     });
-    pdfWordImage_(hl,DriveApp.getFileById(DRIVE_FOLDERS.mainLogo).getBlob(),84,81,
+    pdfWordImage_(hl,DriveApp.getFileById(DRIVE_FOLDERS.mainLogo).getBlob(),80,78,
       "NITYA ACADEMY",DocumentApp.HorizontalAlignment.LEFT);
     pdfWordPara_(hc.getChild(0).asParagraph(),17,true,DocumentApp.HorizontalAlignment.CENTER);
     [
@@ -288,7 +290,7 @@ function buildStaffPdf_(p,photoFile,existingPdf){
     registration.setColumnWidth(1,476);
     var photoCell=registration.getCell(0,0);
     photoCell.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(0).setPaddingRight(3);
-    pdfWordImage_(photoCell,photoFile.getBlob(),71,91,
+    pdfWordImage_(photoCell,photoFile.getBlob(),69,78,
       "STUDENT PHOTO",DocumentApp.HorizontalAlignment.CENTER);
     var detailCell=registration.getCell(0,1);
     detailCell.setPaddingTop(0).setPaddingBottom(0).setPaddingLeft(0).setPaddingRight(0);
@@ -354,7 +356,7 @@ function buildStaffPdf_(p,photoFile,existingPdf){
     pdfWordPara_(body.appendParagraph(
       "I declare the information above is correct and consent to the applicable terms and conditions recorded in the Staff Portal. "+
       "This form alone does not guarantee admission, scholarship selection or payment verification."
-    ),9.1,false).setSpacingAfter(7);
+    ),8.8,false).setSpacingAfter(3);
 
     pdfWordGap_(body,isAdmission?10:20);
     var signature=body.appendTable([[
@@ -366,7 +368,7 @@ function buildStaffPdf_(p,photoFile,existingPdf){
     signature.setColumnWidth(1,278);
     for(var si=0;si<2;si++){
       var sc=signature.getRow(0).getCell(si);
-      sc.setPaddingTop(20).setPaddingBottom(13).setPaddingLeft(5).setPaddingRight(3);
+      sc.setPaddingTop(12).setPaddingBottom(7).setPaddingLeft(5).setPaddingRight(3);
       pdfWordPara_(sc.getChild(0).asParagraph(),9,false);
     }
     pdfWordGap_(body,5);
@@ -383,7 +385,17 @@ function buildStaffPdf_(p,photoFile,existingPdf){
     var pdfBlob=DriveApp.getFileById(doc.getId()).getAs(MimeType.PDF).setName(fileName);
     var rawPdf=pdfBlob.getDataAsString("ISO-8859-1");
     var pages=(rawPdf.match(/\/Type\s*\/Page\b/g)||[]).length;
-    if(pages>1)throw Error("Word-style A4 layout overflow ("+pages+" pages). PDF not replaced; shorten unusually long fields.");
+    if(pages>1){
+      // One automatic compact pass protects long names/addresses without
+      // changing any submitted values or registration number.
+      var tightDoc=DocumentApp.openById(doc.getId());
+      pdfWordTighten_(tightDoc.getBody());
+      tightDoc.saveAndClose();
+      pdfBlob=DriveApp.getFileById(doc.getId()).getAs(MimeType.PDF).setName(fileName);
+      rawPdf=pdfBlob.getDataAsString("ISO-8859-1");
+      pages=(rawPdf.match(/\/Type\s*\/Page\b/g)||[]).length;
+    }
+    if(pages>1)throw Error("Word-style A4 layout still needs fitting ("+pages+" pages). No PDF replaced; contact Admin.");
     var pdf=folder.createFile(pdfBlob);
     if(pdf.getMimeType()!==MimeType.PDF||pdf.getSize()<500)throw Error("Generated PDF invalid");
     return pdf;
@@ -391,6 +403,37 @@ function buildStaffPdf_(p,photoFile,existingPdf){
     try{DriveApp.getFileById(doc.getId()).setTrashed(true);}catch(ignore){}
   }
 }
+/**
+ * On rare full-length student names/addresses, Google Docs adds an overflow
+ * page. This second pass tightens only whitespace and table cell padding;
+ * all original fields, image pixels, and black-outline Word styling remain.
+ */
+function pdfWordTighten_(body){
+  function walk(element){
+    var kind=element.getType();
+    if(kind===DocumentApp.ElementType.PARAGRAPH){
+      element.setSpacingBefore(0).setSpacingAfter(0).setLineSpacing(1);
+      if(!element.getText().trim())element.editAsText().setFontSize(1);
+      return;
+    }
+    if(kind===DocumentApp.ElementType.TABLE_CELL){
+      element.setPaddingTop(0).setPaddingBottom(0);
+    }
+    if(kind===DocumentApp.ElementType.TABLE){
+      for(var i=0;i<element.getNumRows();i++)walk(element.getRow(i));
+      return;
+    }
+    if(kind===DocumentApp.ElementType.TABLE_ROW){
+      for(var j=0;j<element.getNumCells();j++)walk(element.getCell(j));
+      return;
+    }
+    if(typeof element.getNumChildren==="function"){
+      for(var k=0;k<element.getNumChildren();k++)walk(element.getChild(k));
+    }
+  }
+  walk(body);
+}
+
 /** Called by Code.gs web-app router: must be wired for action staffPdfV6Ready. */
 function staffPdfV6Ready_(){
   return {success:true,code:"STAFF_PDF_V6_READY",
