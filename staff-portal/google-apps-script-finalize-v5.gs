@@ -410,13 +410,11 @@ function buildStaffPdf_(p,photoFile,existingPdf){
     var pdfBlob=DriveApp.getFileById(doc.getId()).getAs(MimeType.PDF).setName(fileName);
     var rawPdf=pdfBlob.getDataAsString("ISO-8859-1");
     var pages=(rawPdf.match(/\/Type\s*\/Page\b/g)||[]).length;
-    if(pages>1){
-      // One automatic compact pass protects long names/addresses without
-      // changing any submitted values or registration number.
+    // If the border frame alone causes an overflow, shrink the frame FIRST.
+    // Only reduce row heights in later passes; never destroy all cell spacing.
+    for(var layoutPass=1;pages>1&&layoutPass<=3;layoutPass++){
       var tightDoc=DocumentApp.openById(doc.getId());
-      var tighterFrame=tightDoc.getBody().getTables()[0];
-      if(tighterFrame)tighterFrame.getRow(0).setMinimumHeight(755);
-      pdfWordTighten_(tightDoc.getBody());
+      pdfWordTighten_(tightDoc.getBody(),layoutPass);
       tightDoc.saveAndClose();
       pdfBlob=DriveApp.getFileById(doc.getId()).getAs(MimeType.PDF).setName(fileName);
       rawPdf=pdfBlob.getDataAsString("ISO-8859-1");
@@ -437,10 +435,11 @@ function buildStaffPdf_(p,photoFile,existingPdf){
  */
 /** Gentle A4 fallback only: keep readable fonts, logos, and tall sign box.
  * Never zero every cell padding as the old fallback did. */
-function pdfWordTighten_(body){
+function pdfWordTighten_(body,level){
   var frame=body.getTables()[0];
   if(!frame)return;
-  frame.getRow(0).setMinimumHeight(755);
+  frame.getRow(0).setMinimumHeight(level===1?755:745);
+  if(level===1)return; // border height only, keeps all full-size tables
   var canvas=frame.getCell(0,0);
   function visit(element){
     var t=element.getType();
@@ -449,14 +448,14 @@ function pdfWordTighten_(body){
       if(rowCount>=1 && element.getRow(0).getNumCells()===4 && rowCount!==2){
         for(var i=0;i<rowCount;i++){
           var row=element.getRow(i);
-          row.setMinimumHeight(18);
+          row.setMinimumHeight(level===2?20:18);
           for(var j=0;j<4;j++){
             var c=row.getCell(j);
-            c.setPaddingTop(2).setPaddingBottom(2);
+            c.setPaddingTop(level===2?3:2).setPaddingBottom(level===2?3:2);
           }
         }
       }else if(rowCount===1&&element.getRow(0).getNumCells()===1){
-        element.getRow(0).setMinimumHeight(18);
+        element.getRow(0).setMinimumHeight(level===2?19:18);
       }
       for(var n=0;n<rowCount;n++)visit(element.getRow(n));
     }else if(t===DocumentApp.ElementType.TABLE_ROW){
