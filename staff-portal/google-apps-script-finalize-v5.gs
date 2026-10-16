@@ -475,8 +475,18 @@ function verifyStudentPdfV4_(){
   ["admission","scholarship"].forEach(function(type){
    const args={type:type,recordId:Utilities.getUuid(),formNumber:sample+(type==="admission"?"ADM":"SCH"),
     createdAt:new Date().toISOString(),staffName:"TEST SYSTEM",staffId:"TEST-STF",
-    fields:{studentName:"TEST ONLY",fatherName:"SAMPLE",aadhaar:"000000000000",
-      dob:"2000-01-01",gender:"other",course:"ECCE"},
+    fields:{studentName:"TEST STUDENT SAMPLE",fatherName:"SAMPLE FATHER NAME",
+      motherName:"SAMPLE MOTHER",aadhaar:"000000000000",
+      dob:"2000-01-01",gender:"female",course:"ECCE",courseName:"ECCE",
+      mobile:"9000000000",whatsapp:"9000000000",email:"sample.student@example.com",
+      pin:"321001",city:"Bharatpur",district:"Bharatpur",state:"Rajasthan",
+      address:"Near Ketan Gate, Sahyog Nagar, Bharatpur, Rajasthan - 321001",
+      passed10:"yes",board10:"BSER",year10:"2017",percent10:"72",
+      passed12:"yes",board12:"BSER",year12:"2019",percent12:"78",
+      lastQualification:"12th",lastBoard:"BSER",lastYear:"2019",lastPercent:"78",
+      session:"2026",totalFees:"11000",practicalApplicable:"yes",
+      practicalFee:"500",hasReference:"no",referenceName:"—",
+      examDate:"2026-11-30",registrationDate:"2026-10-16",paymentMode:"cash"},
     terms:"TEST ONLY - NOT A REAL REGISTRATION."};
    const file=buildStaffPdf_(args,main,null);
    files.push(file);
