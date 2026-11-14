@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, RefreshCw, MessageCircle, FileClock, Pencil, Archive, RotateCcw, X, Save } from "lucide-react";
+import { Download, RefreshCw, MessageCircle, FileClock, Pencil, Archive, RotateCcw, X, Save, ImageUp } from "lucide-react";
 import { downloadStaffPdf, fetchStaffPdfFile, canShareStaffPdf, sharePreparedStaffPdf } from "../lib/staffPdfDownload";
 
 type Application={
  id:string;kind:"admission"|"scholarship";form_number:string;student_name:string;mobile:string;
- document_status:string;sheet_sync_status:string;pdf_drive_id:string|null;created_at:string;
+ document_status:string;sheet_sync_status:string;pdf_drive_id:string|null;photo_drive_id:string|null;photo_draft_id:string|null;created_at:string;
  revision_number:number;revised_at:string|null;staff_hidden_at:string|null;
 };
 type Course={id:string;name:string;active:boolean};
@@ -53,6 +53,9 @@ export default function StaffApplicationsHistory({kind,courses=[]}:{kind:"admiss
  const [editing,setEditing]=useState<Detail|null>(null);
  const [editFields,setEditFields]=useState<Record<string,string>>({});
  const [preparedShare,setPreparedShare]=useState<{id:string,file:File}|null>(null);
+ const [photoRecordId,setPhotoRecordId]=useState("");
+ const [photoFile,setPhotoFile]=useState<File|null>(null);
+ const [photoConsent,setPhotoConsent]=useState(false);
  const reload=useCallback(async()=>{
   setBusy("load");setError("");
   try{
@@ -62,6 +65,23 @@ export default function StaffApplicationsHistory({kind,courses=[]}:{kind:"admiss
   finally{setBusy("");}
  },[removed,kind]);
  useEffect(()=>{void reload();},[reload]);
+ const attachPhoto=async(row:Application)=>{
+  if(busy||!photoFile||!photoConsent||photoRecordId!==row.id)return;
+  if(!["image/jpeg","image/png"].includes(photoFile.type)||photoFile.size<1||photoFile.size>2500000){
+   setError("Please select a JPG/PNG photo under 2.5 MB.");return;
+  }
+  setBusy(row.id+"-photo");setError("");setNotice("");
+  try{
+   const data=new FormData();
+   data.append("kind","scholarship");data.append("photo",photoFile);data.append("consent","yes");
+   const upload=await api("/api/staff/photo/upload",{method:"POST",body:data});
+   const result=await api("/api/staff/application/attach-photo",post({recordId:row.id,photoId:upload.photoId}));
+   setPhotoFile(null);setPhotoConsent(false);setPhotoRecordId("");
+   setNotice(result.notice||"Photo saved. Download the updated PDF from this record.");
+   await reload();
+  }catch(e){setError(e instanceof Error?e.message:"Could not attach the scholarship photo.");}
+  finally{setBusy("");}
+ };
  const retry=async(row:Application)=>{
   if(busy)return;
   setBusy(row.id);setError("");setNotice("");
@@ -221,8 +241,28 @@ export default function StaffApplicationsHistory({kind,courses=[]}:{kind:"admiss
     <div className="text-sm space-y-1">
      <p>PDF: <strong>{row.document_status==="ready"&&row.pdf_drive_id?"Ready":"Pending / Retry Required"}</strong></p>
      <p>Google Sheet: <strong>{row.sheet_sync_status==="synced"?"Synced":"Pending / Retry Required"}</strong></p>
+     {kind==="scholarship"&&<p>Photo: <strong>{row.photo_drive_id?"Uploaded":row.photo_draft_id?"Processing / Retry":"Pending"}</strong></p>}
     </div>
    </div>
+   {!removed&&kind==="scholarship"&&!row.photo_drive_id&&!row.photo_draft_id&&<div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+    <label className="flex items-center gap-2 text-sm font-medium text-amber-950"><ImageUp size={16}/> Upload Pending Photo (JPG / PNG, max 2.5 MB)
+      <input type="file" accept="image/jpeg,image/png" className="max-w-full text-xs"
+       disabled={!!busy} onChange={e=>{
+        setPhotoRecordId(row.id);setPhotoFile(e.currentTarget.files?.[0]||null);setPhotoConsent(false);
+       }}/>
+    </label>
+    {photoRecordId===row.id&&photoFile&&<>
+      <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={photoConsent}
+        onChange={e=>setPhotoConsent(e.target.checked)}/>
+       Student or guardian consented to this private photo upload.
+      </label>
+      <button type="button" className="pill-btn-primary disabled:opacity-50" disabled={!!busy||!photoConsent}
+        onClick={()=>void attachPhoto(row)}>{busy===row.id+"-photo"?"Uploading...":"Upload Photo & Update PDF"}</button>
+    </>}
+   </div>}
+   {!removed&&kind==="scholarship"&&!row.photo_drive_id&&row.photo_draft_id&&<p className="text-sm text-amber-800">
+    Photo processing needs retry. Use Retry PDF / Google Sheet; do not upload again.
+   </p>}
    <div className="flex gap-2 flex-wrap">
     {!removed&&row.document_status==="ready"&&row.pdf_drive_id&&<button type="button"
       disabled={!!busy} onClick={()=>void downloadPdf(row)}
