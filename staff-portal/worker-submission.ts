@@ -13,7 +13,7 @@ export type StaffIdentity={id:string;name:string};
 type Kind="admission"|"scholarship";
 type DocState="pending"|"ready";
 type Stored={id:string;kind:Kind;form_number:string;staff_id:string;student_name:string;mobile:string;fields_json:string;
-  photo_drive_id:string|null;pdf_drive_id:string|null;photo_draft_id:string;document_status:DocState;
+  photo_drive_id:string|null;pdf_drive_id:string|null;photo_draft_id:string|null;document_status:DocState;
   sheet_sync_status:string;created_at:string;staff_hidden_at:string|null;revision_number:number;revised_at:string|null};
 const json=(data:unknown,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"private,no-store","X-Content-Type-Options":"nosniff"}});
 const bad=(message:string,status=400)=>json({error:message},status);
@@ -113,12 +113,13 @@ async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
  const fields=JSON.parse(row.fields_json) as Record<string,string>;
  let photoFileId=row.photo_drive_id||"",pdfFileId=row.pdf_drive_id||"";
  if(!pdfFileId||row.document_status!=="ready"){
-  const draft=await env.DB.prepare(
+  const draft=row.photo_draft_id?await env.DB.prepare(
    "SELECT id,drive_file_id,mime,status,expires_at FROM staff_photo_drafts WHERE id=? AND staff_id=? AND kind=?"
   ).bind(row.photo_draft_id,staff.id,row.kind).first<{
    id:string;drive_file_id:string|null;mime:string;status:string;expires_at:string;
-  }>();
-  if((!draft||!draft.drive_file_id||draft.status!=="ready")&&!photoFileId)
+  }>():null;
+  const photoDeferred=row.kind==="scholarship"&&!row.photo_draft_id&&!photoFileId;
+  if(!photoDeferred&&(!draft||!draft.drive_file_id||draft.status!=="ready")&&!photoFileId)
    throw Error("Photo draft unavailable. Contact Admin to recover the existing application.");
   // Scholarship forms use the ECCE course's own Admin-managed recognition logo.
   // When inactive or missing, the extra logo is omitted.
@@ -132,7 +133,7 @@ async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
   const regenerating=!!pdfFileId&&row.document_status!=="ready";
   const doc=await driveRequest(env,{
    action:regenerating?"reviseStudentDocuments":"finalizeStudentDocuments",type:row.kind,recordId:row.id,formNumber:row.form_number,
-   createdAt:row.created_at,photoId:row.photo_draft_id,photoFileId:photoFileId||draft?.drive_file_id,
+   createdAt:row.created_at,photoId:row.photo_draft_id,photoFileId:photoFileId||draft?.drive_file_id||null,
    existingPdfFileId:regenerating?pdfFileId:null,revisionNumber:row.revision_number,
    photoMime:draft?.mime||null,fields:{...fields,course:fields.courseName||fields.course},staffId:staff.id,staffName:staff.name,
    terms:terms?.setting_value||"",
@@ -140,14 +141,14 @@ async function processSaved(env:WorkflowEnv,staff:StaffIdentity,row:Stored){
   });
   photoFileId=String(doc.photoFileId||"");
   pdfFileId=String(doc.pdfFileId||"");
-  if(!photoFileId||!pdfFileId)throw Error("PDF storage returned an incomplete reference");
+  if(!pdfFileId||(!photoFileId&&!photoDeferred))throw Error("PDF storage returned an incomplete reference");
   const savedPdf=await env.DB.prepare(
    "UPDATE student_applications SET photo_drive_id=?,pdf_drive_id=?,document_status='ready',"+
    "document_last_error=NULL WHERE id=? AND staff_id=? AND revision_number=?"
-  ).bind(photoFileId,pdfFileId,row.id,staff.id,row.revision_number).run();
+  ).bind(photoFileId||null,pdfFileId,row.id,staff.id,row.revision_number).run();
   if(savedPdf.meta?.changes!==1)throw Error("Form revision changed during PDF generation. Refresh and retry.");
   // This ID now belongs to permanent application; do not let expiry cleanup trash it.
-  if(draft)await env.DB.prepare("DELETE FROM staff_photo_drafts WHERE id=? AND staff_id=?")
+  if(draft&&photoFileId)await env.DB.prepare("DELETE FROM staff_photo_drafts WHERE id=? AND staff_id=?")
    .bind(row.photo_draft_id,staff.id).run();
  }
  if(row.sheet_sync_status!=="synced"){
@@ -210,6 +211,45 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
   let body:Record<string,unknown>;
   try{const raw=await request.text();if(raw.length>20000)throw Error("Too large");body=JSON.parse(raw);}
   catch{return bad("Invalid form submission",400);}
+  if(path==="/api/staff/application/attach-photo"){
+   if(!isString(body.recordId)||!idRE.test(body.recordId)||
+      !isString(body.photoId)||!idRE.test(body.photoId))return bad("Invalid scholarship or photo reference");
+   const row=await ownedApplication(env,staff,body.recordId);
+   if(!row||row.kind!=="scholarship")return bad("Scholarship record not found",404);
+   if(row.staff_hidden_at)return bad("Restore the form before adding a photo",409);
+   if(row.photo_drive_id)return bad("This scholarship already has a photo",409);
+   if(row.photo_draft_id&&row.photo_draft_id!==body.photoId)
+    return bad("A photo is already processing for this scholarship. Use Retry Processing.",409);
+   if(!row.photo_draft_id){
+    const draft=await env.DB.prepare(
+     "SELECT id FROM staff_photo_drafts WHERE id=? AND staff_id=? AND kind='scholarship' AND status='ready' AND expires_at>?"
+    ).bind(body.photoId,staff.id,new Date().toISOString()).first<{id:string}>();
+    if(!draft)return bad("Photo draft is missing or expired. Please upload again.",409);
+    const taken=await env.DB.prepare("SELECT id FROM student_applications WHERE photo_draft_id=?")
+      .bind(body.photoId).first<{id:string}>();
+    if(taken&&taken.id!==row.id)return bad("Photo already used in another form",409);
+    const attached=await env.DB.prepare(
+     "UPDATE student_applications SET photo_draft_id=?,document_status='pending',"+
+     "sheet_sync_status='pending',document_last_error=NULL,sheet_last_error=NULL "+
+     "WHERE id=? AND staff_id=? AND kind='scholarship' AND photo_drive_id IS NULL "+
+     "AND photo_draft_id IS NULL AND staff_hidden_at IS NULL"
+    ).bind(body.photoId,row.id,staff.id).run();
+    if(attached.meta?.changes!==1)return bad("Scholarship changed. Refresh records and retry.",409);
+   }
+   const latest=await ownedApplication(env,staff,row.id);
+   if(!latest)return bad("Scholarship record unavailable",503);
+   try{
+    const processed=await processSaved(env,staff,latest);
+    return json({...receipt(processed||latest),notice:processed?.photo_drive_id?
+      "Photo added. Download the updated PDF with your original registration number.":
+      "Photo attached; PDF and Sheet processing need retry."},processed?.photo_drive_id?200:202);
+   }catch(e){
+    console.error("Scholarship later-photo PDF update pending",String(e).slice(0,130));
+    await env.DB.prepare("UPDATE student_applications SET document_last_error=? WHERE id=? AND staff_id=?")
+     .bind("Photo saved; PDF update requires retry",row.id,staff.id).run().catch(()=>{});
+    return json({...receipt(latest),notice:"Photo saved; PDF update is pending. Use Retry PDF / Google Sheet."},202);
+   }
+  }
   if(path==="/api/staff/application/details"){
    if(!isString(body.recordId)||!idRE.test(body.recordId))return bad("Invalid form reference",400);
    const row=await ownedApplication(env,staff,body.recordId);
@@ -242,7 +282,7 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
    const row=await ownedApplication(env,staff,body.recordId);
    if(!row)return bad("Form not found",404);
    if(row.staff_hidden_at)return bad("Restore the form first.",409);
-   if(!row.photo_drive_id||!row.pdf_drive_id||row.document_status!=="ready")
+   if((!row.photo_drive_id&&row.kind!=="scholarship")||!row.pdf_drive_id||row.document_status!=="ready")
      return bad("Form PDF is not ready. Retry PDF / Google Sheet processing first.",409);
    // Do not replace a working private PDF until owner has deployed the
    // one-page A4 Word-style template. Earlier V5 generated 41–46 page PDFs.
@@ -359,9 +399,16 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
   if(path!=="/api/staff/application/submit")return bad("Unknown action",404);
   const kind=body.kind,photoId=body.photoId;
   if(kind!=="admission"&&kind!=="scholarship")return bad("Invalid form type");
-  if(!isString(photoId)||!idRE.test(photoId))return bad("Upload the student photo first.");
+  const deferPhoto=kind==="scholarship"&&(photoId===null||photoId===undefined||photoId==="");
+  if(!deferPhoto&&(!isString(photoId)||!idRE.test(photoId)))return bad("Upload the student photo first.");
+  if(deferPhoto&&(!isString(body.clientRequestId)||!idRE.test(body.clientRequestId)))
+   return bad("Invalid form request; refresh and submit again.");
   if(body.termsAccepted!==true)return bad("Student or guardian consent and terms acceptance required.");
-  const prior=await env.DB.prepare("SELECT id FROM student_applications WHERE photo_draft_id=?")
+  if(deferPhoto){
+   const previous=await ownedApplication(env,staff,body.clientRequestId as string);
+   if(previous)return json({...receipt(previous),notice:"This scholarship was already recorded with the same number."});
+  }
+  const prior=deferPhoto?null:await env.DB.prepare("SELECT id FROM student_applications WHERE photo_draft_id=?")
    .bind(photoId).first<{id:string}>();
   if(prior){
    const existing=await ownedApplication(env,staff,prior.id);
@@ -370,15 +417,17 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
     return json(receipt(await processSaved(env,staff,existing) as Stored));
    }catch{return json({...receipt(existing),notice:"Saved. PDF or Sheets processing needs retry."},202);}
   }
-  const draft=await env.DB.prepare(
-   "SELECT status,expires_at FROM staff_photo_drafts WHERE id=? AND staff_id=? AND kind=?"
-  ).bind(photoId,staff.id,kind).first<{status:string;expires_at:string}>();
-  if(!draft||draft.status!=="ready"||draft.expires_at<=new Date().toISOString())
-   return bad("Photo draft is missing or expired. Please upload again.");
+  if(!deferPhoto){
+   const draft=await env.DB.prepare(
+    "SELECT status,expires_at FROM staff_photo_drafts WHERE id=? AND staff_id=? AND kind=?"
+   ).bind(photoId,staff.id,kind).first<{status:string;expires_at:string}>();
+   if(!draft||draft.status!=="ready"||draft.expires_at<=new Date().toISOString())
+    return bad("Photo draft is missing or expired. Please upload again.");
+  }
   let fields:Record<string,string>;
   try{fields=await normalizedFields(env,kind,body.fields);}
   catch(e){return bad(e instanceof Error?e.message:"Invalid form fields");}
-  const recordId=crypto.randomUUID();
+  const recordId=deferPhoto?body.clientRequestId as string:crypto.randomUUID();
   // Reserve the Application/Scholarship number AND student record in one
   // atomic D1 batch. No serial can be duplicated or consumed by a failed insert.
   // The unique photo_draft_id also prevents accidental double submissions.
@@ -394,7 +443,7 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
         "FROM registration_sequences WHERE sequence_key=? AND next_number<=end_number"
       ).bind(recordId,kind,kind,staff.id,fields.studentName,fields.mobile,
         kind==="admission"?fields.course:"ecce",JSON.stringify(fields),
-        kind==="scholarship"?fields.paymentMode:null,cents,photoId,kind),
+        kind==="scholarship"?fields.paymentMode:null,cents,deferPhoto?null:photoId,kind),
       env.DB.prepare(
         "UPDATE registration_sequences SET next_number=next_number+1 "+
         "WHERE sequence_key=? AND next_number<=end_number"
@@ -407,8 +456,8 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
         "Admission application number range is exhausted or not configured. Contact Admin.":
         "Scholarship registration number range is exhausted or not configured. Contact Admin.",503);
   }catch(e){
-    const dupe=await env.DB.prepare(
-      "SELECT id FROM student_applications WHERE photo_draft_id=?"
+    const dupe=deferPhoto?await ownedApplication(env,staff,recordId):await env.DB.prepare(
+     "SELECT id FROM student_applications WHERE photo_draft_id=?"
     ).bind(photoId).first<{id:string}>();
     if(dupe){
       const existing=await ownedApplication(env,staff,dupe.id);
@@ -436,7 +485,7 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
   const kind=params.get("kind");
   if(kind!=="admission"&&kind!=="scholarship")return bad("Select admission or scholarship records",400);
   const rows=await env.DB.prepare(
-   "SELECT id,kind,form_number,student_name,mobile,pdf_drive_id,document_status,"+
+   "SELECT id,kind,form_number,student_name,mobile,pdf_drive_id,photo_drive_id,photo_draft_id,document_status,"+
    "sheet_sync_status,created_at,revision_number,revised_at,staff_hidden_at FROM student_applications "+
    "WHERE staff_id=? AND kind=? AND "+(hidden?"staff_hidden_at IS NOT NULL":"staff_hidden_at IS NULL")+" "+
    "ORDER BY created_at DESC LIMIT 60"

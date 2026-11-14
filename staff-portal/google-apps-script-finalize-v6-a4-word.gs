@@ -127,27 +127,32 @@ function finalizeStudentDocuments_(p){
   if(typeof p.recordId!=="string"||!/^[0-9a-f-]{36}$/i.test(p.recordId))throw Error("Invalid form reference");
   if(typeof p.formNumber!=="string"||!/^[A-Za-z0-9_-]{4,80}$/.test(p.formNumber))
     throw Error("Invalid form number");
-  if(typeof p.photoId!=="string"||!p.photoFileId)throw Error("Private student photo draft is required");
+  const pendingPhoto=p.type==="scholarship"&&!p.photoFileId&&!p.photoId;
+  if(!pendingPhoto&&(typeof p.photoId!=="string"||!p.photoFileId))
+   throw Error("Private student photo draft is required");
   const fields=p.fields||{};
   const studentName=String(fields.studentName||"").trim();
   if(!studentName||studentName.length>120)throw Error("Invalid student name");
   const safeName=studentName.replace(/[\\/<>:*?"|\r\n\t]/g," ").replace(/\s+/g," ").slice(0,90);
-  const ext=p.photoMime==="image/png"?".png":p.photoMime==="image/jpeg"?".jpg":null;
-  if(!ext)throw Error("Invalid student photo format");
-  const name=safeName+" - "+p.formNumber+ext;
-  const folder=photoDraftFolder_(p.type);
-  const photo=DriveApp.getFileById(p.photoFileId);
-  if(!inFolder_(photo,folder.getId()))throw Error("Invalid private photo folder");
-  if(photo.getMimeType()!==p.photoMime)throw Error("Photo MIME mismatch");
-  const draft=photoDraftName_(p.photoId);
-  if(photo.getName()!==draft&&photo.getName()!==name)throw Error("Photo has an unexpected name");
+  let photo=null,name="";
+  if(!pendingPhoto){
+   const ext=p.photoMime==="image/png"?".png":p.photoMime==="image/jpeg"?".jpg":null;
+   if(!ext)throw Error("Invalid student photo format");
+   name=safeName+" - "+p.formNumber+ext;
+   const folder=photoDraftFolder_(p.type);
+   photo=DriveApp.getFileById(p.photoFileId);
+   if(!inFolder_(photo,folder.getId()))throw Error("Invalid private photo folder");
+   if(photo.getMimeType()!==p.photoMime)throw Error("Photo MIME mismatch");
+   const draft=photoDraftName_(p.photoId);
+   if(photo.getName()!==draft&&photo.getName()!==name)throw Error("Photo has an unexpected name");
+  }
   const pdfFolder=getFolder_(p.type==="admission"?"admissions":"scholarships","pdfs");
   const pdfName="Nitya Academy "+(p.type==="admission"?"Admission":"ECCE Scholarship")+" - "+p.formNumber+".pdf";
   let pdf=findInFolder_(pdfFolder,pdfName);
   if(!pdf)pdf=buildStaffPdf_(p,photo,null);
   if(pdf.getMimeType()!==MimeType.PDF||pdf.getSize()<500)throw Error("Generated PDF is invalid");
-  if(photo.getName()!==name)photo.setName(name);
-  return {success:true,photoFileId:photo.getId(),pdfFileId:pdf.getId(),
+  if(photo&&photo.getName()!==name)photo.setName(name);
+  return {success:true,photoFileId:photo?photo.getId():"",pdfFileId:pdf.getId(),
     photoName:name,pdfName:pdfName};
 }
 
@@ -328,7 +333,18 @@ function pdfV6BuildDocument_(p,photoFile,scale) {
  ],[79,121,114,110,103],scale,false);
  for(const row of [0,1])for(const column of [1,3])
   metadata.getCell(row,column).getChild(0).asParagraph().editAsText().setBold(true);
- pdfV6Image_(metadata.getCell(0,0),photoFile.getBlob(),66,76);
+ if(!photoFile&&isAdmission)throw Error("Admission student photo is required");
+ if(photoFile){
+  pdfV6Image_(metadata.getCell(0,0),photoFile.getBlob(),66,76);
+ }else{
+  // Keep the photo area visibly reserved in the first ECCE Scholarship PDF.
+  const cell=metadata.getCell(0,0);
+  const placeholder=cell.getChild(0).asParagraph();
+  placeholder.setText("PHOTO\nPENDING");
+  placeholder.setAlignment(DocumentApp.HorizontalAlignment.CENTER)
+   .setSpacingBefore(23*scale).setSpacingAfter(23*scale).setLineSpacing(1.0);
+  placeholder.editAsText().setBold(true).setFontSize(8*scale).setForegroundColor("#000000");
+ }
  pdfV6Section_(body,"1. PERSONAL DETAILS",[
   ["Student's Full Name",v.studentName],["Father's Name",v.fatherName],
   ["Mother's Name",v.motherName],["Date of Birth",v.dob],
@@ -435,6 +451,18 @@ function testStaffPdfV6(){
  Logger.log(JSON.stringify(result));
  return result;
 }
+function testStaffPdfScholarshipPending(){
+ const number="PENDING-TEST-"+Utilities.getUuid().replace(/-/g,"").slice(0,10);
+ const p={type:"scholarship",recordId:Utilities.getUuid(),formNumber:number,
+  createdAt:new Date().toISOString(),staffName:"TEST SYSTEM",staffId:"TEST-STF",
+  fields:{studentName:"TEST ONLY",fatherName:"SAMPLE",course:"ECCE"},
+  terms:"TEST ONLY - NOT A REAL REGISTRATION."};
+ const pdf=buildStaffPdf_(p,null,null);
+ try{
+  if(pdf.getMimeType()!==MimeType.PDF||pdf.getSize()<500)throw Error("Pending photo PDF failed");
+  Logger.log("Pending-photo scholarship PDF verified: "+pdf.getSize()+" bytes");
+ }finally{pdf.setTrashed(true);}
+}
 
 function getStudentPdfV4_(p){
  if(!shortId_(p.fileId)||!["admission","scholarship"].includes(p.type))throw Error("Invalid PDF request");
@@ -477,15 +505,20 @@ function reviseStudentDocuments_(p){
  if(!["admission","scholarship"].includes(p.type))throw Error("Invalid form type");
  if(typeof p.recordId!=="string"||!/^[a-f0-9-]{36}$/i.test(p.recordId))throw Error("Invalid record reference");
  if(typeof p.formNumber!=="string"||!/^[A-Za-z0-9_-]{4,80}$/.test(p.formNumber))throw Error("Invalid form number");
- if(!shortId_(p.photoFileId)||!shortId_(p.existingPdfFileId))throw Error("Missing private document reference");
- const photos=photoDraftFolder_(p.type);
- const photo=DriveApp.getFileById(p.photoFileId);
- if(!inFolder_(photo,photos.getId()))throw Error("Private photo folder mismatch");
- const mime=photo.getMimeType();
- if(!["image/jpeg","image/png"].includes(mime))throw Error("Unexpected saved photo MIME");
+ const pendingPhoto=p.type==="scholarship"&&!p.photoFileId;
+ if(!shortId_(p.existingPdfFileId)||(!pendingPhoto&&!shortId_(p.photoFileId)))
+  throw Error("Missing private document reference");
+ let photo=null,mime="";
+ if(!pendingPhoto){
+  const photos=photoDraftFolder_(p.type);
+  photo=DriveApp.getFileById(p.photoFileId);
+  if(!inFolder_(photo,photos.getId()))throw Error("Private photo folder mismatch");
+  mime=photo.getMimeType();
+  if(!["image/jpeg","image/png"].includes(mime))throw Error("Unexpected saved photo MIME");
+ }
  const safeName=String((p.fields||{}).studentName||"").trim().replace(/[\\/<>:*?"|\r\n\t]/g," ").replace(/\s+/g," ").slice(0,90);
  if(!safeName)throw Error("Student Name is missing");
- const photoName=safeName+" - "+p.formNumber+(mime==="image/png"?".png":".jpg");
+ const photoName=photo?safeName+" - "+p.formNumber+(mime==="image/png"?".png":".jpg"):"";
  const pdfFolder=getFolder_(p.type==="admission"?"admissions":"scholarships","pdfs");
  const previous=DriveApp.getFileById(p.existingPdfFileId);
  if(!inFolder_(previous,pdfFolder.getId())||previous.getMimeType()!==MimeType.PDF)
@@ -505,9 +538,9 @@ function reviseStudentDocuments_(p){
  }
  if(!current)current=buildStaffPdf_(p,photo,null);
  if(current.getId()===previous.getId())throw Error("Revision PDF was not generated");
- if(photo.getName()!==photoName)photo.setName(photoName);
+ if(photo&&photo.getName()!==photoName)photo.setName(photoName);
  if(!previous.isTrashed())previous.setTrashed(true);
- return {success:true,photoFileId:photo.getId(),pdfFileId:current.getId(),
+ return {success:true,photoFileId:photo?photo.getId():"",pdfFileId:current.getId(),
    photoName:photoName,pdfName:current.getName(),revision:Number(p.revisionNumber)||0};
 }
 

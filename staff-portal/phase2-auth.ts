@@ -197,6 +197,7 @@ export async function handlePhaseTwo(request:Request,env:Env,isAdmin:boolean):Pr
   }
   if(path==="/api/staff/application/submit"&&post||
      path==="/api/staff/application/retry"&&post||
+     path==="/api/staff/application/attach-photo"&&post||
      path==="/api/staff/application/details"&&post||
      path==="/api/staff/application/update"&&post||
      path==="/api/staff/application/regenerate-pdf"&&post||
