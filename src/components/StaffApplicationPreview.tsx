@@ -26,6 +26,9 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
   const [photoBusy,setPhotoBusy]=useState(false);
   const [photoError,setPhotoError]=useState("");
   const [photoMessage,setPhotoMessage]=useState("");
+  const [uploadLater,setUploadLater]=useState(false);
+  // Stable across network retries: an offline/photo-later submit cannot reserve two numbers.
+  const [scholarshipRequestId]=useState(()=>crypto.randomUUID());
   useEffect(()=>{
     if(!selectedPhoto){setPhotoPreview("");return;}
     const url=URL.createObjectURL(selectedPhoto);
@@ -108,15 +111,18 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
     :"";
   const submissionAction=async(retry=false)=>{
     if(submitting||!config.submissionsEnabled)return;
-    if(!retry&&(!photoRef||!photoConsent||!termsAccepted)){
-      setSubmitError("Upload a private photo and accept Student/Guardian Consent and Terms.");
+    const deferPhoto=kind==="scholarship"&&uploadLater&&!photoRef;
+    if(!retry&&(!termsAccepted||(!deferPhoto&&(!photoRef||!photoConsent)))){
+      setSubmitError("Choose a photo (or Upload Later for ECCE Scholarship), and accept the required consent and terms.");
       return;
     }
     setSubmitting(true);setSubmitError("");
     try{
       const url=retry?"/api/staff/application/retry":"/api/staff/application/submit";
       const payload=retry?{recordId:receipt?.recordId}:{
-        kind,photoId:photoRef,termsAccepted:true,fields:kind==="scholarship"?{...values,passed12:"yes"}:values
+        kind,photoId:deferPhoto?null:photoRef,
+        ...(deferPhoto?{clientRequestId:scholarshipRequestId}:{}),
+        termsAccepted:true,fields:kind==="scholarship"?{...values,passed12:"yes"}:values
       };
       const response=await fetch(url,{method:"POST",credentials:"include",
         headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),cache:"no-store"});
@@ -335,11 +341,22 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
     <section className="space-y-3 rounded-xl bg-slate-50 border p-4 sm:p-5">
       <h3 className="text-lg font-semibold flex items-center gap-2"><ImageUp size={20}/> Student Photo</h3>
       <p className="text-sm text-slate-600">JPG/PNG only, maximum 2.5 MB. Photos are never publicly shared. A photo draft is not an admission.</p>
-      <input type="file" name="photo" accept="image/jpeg,image/png"
+      {kind==="scholarship"&&!receipt&&<label className="flex gap-2 items-center text-sm font-semibold text-blue-900">
+        <input type="checkbox" checked={uploadLater} disabled={!!photoRef||photoBusy}
+          onChange={e=>{
+            setUploadLater(e.target.checked);
+            if(e.target.checked){setSelectedPhoto(null);setPhotoConsent(false);setPhotoError("");}
+          }}/>
+        Upload Later — Save ECCE Scholarship now without photo
+      </label>}
+      {kind==="scholarship"&&uploadLater&&<p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        The first downloadable PDF will show PHOTO PENDING. Add the photo later from Scholarship Records to update future PDF downloads.
+      </p>}
+      {!uploadLater&&<input type="file" name="photo" accept="image/jpeg,image/png"
         disabled={photoBusy||!!photoRef}
         onChange={e=>{choosePhoto(e.currentTarget.files?.[0]||null);e.currentTarget.value="";}}
-        className="block w-full rounded-lg border border-slate-300 bg-white p-3 text-sm disabled:opacity-50"/>
-      {photoPreview&&<div className="flex items-center gap-4 flex-wrap">
+        className="block w-full rounded-lg border border-slate-300 bg-white p-3 text-sm disabled:opacity-50"/>}
+      {!uploadLater&&photoPreview&&<div className="flex items-center gap-4 flex-wrap">
         <img src={photoPreview} alt="Photo preview (only on this device)"
           className="h-36 w-32 rounded-lg object-cover border border-slate-300 bg-white"/>
         <div className="space-y-1">
@@ -421,7 +438,8 @@ export default function StaffApplicationPreview({kind,staff,config}:{kind:Kind;s
       <p className="text-xs text-slate-600">On supported mobiles: Prepare PDF, then tap Share PDF + English Message, select WhatsApp and choose the recipient. WhatsApp may omit the caption on some devices. On desktop or if Share is unavailable, Download PDF and attach it manually after opening WhatsApp Text. Nothing is sent automatically.</p>
     </div>}
     {!receipt&&<button type="submit"
-      disabled={!config.submissionsEnabled||submitting||!photoRef||!photoConsent||!termsAccepted}
+      disabled={!config.submissionsEnabled||submitting||!termsAccepted||
+        !(kind==="scholarship"&&uploadLater&&!photoRef)&&(!photoRef||!photoConsent)}
       className="pill-btn-primary disabled:opacity-50">
       {config.submissionsEnabled?(submitting?"Submitting...":"Submit Form & Generate PDF"):"Final Submit — Not Enabled"}
     </button>}
