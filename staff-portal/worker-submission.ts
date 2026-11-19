@@ -368,16 +368,19 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
    if(!fresh)return bad("Correction saved; please reopen the submitted form.",503);
    try{
      const processed=await processSaved(env,staff,fresh);
-     return json({...receipt(processed||fresh),notice:processed?.document_status==="ready"?
-       "Correction saved. Updated PDF and Google Sheet processed. Original form number retained.":
-       "Correction saved; PDF regeneration and Sheet update need retry."});
+     return json({...receipt(processed||fresh),notice:
+       processed?.document_status==="ready"&&processed.sheet_sync_status==="synced"
+         ?"Correction saved. Updated PDF and Google Sheet are ready. Original form number retained."
+         :processed?.document_status==="ready"
+           ?"Correction saved and PDF updated. Google Sheet sync is pending or failed; use Retry PDF / Google Sheet."
+           :"Correction saved in the database. PDF and Google Sheet processing need retry."});
    }catch(e){
      console.error("Edited Staff form pending PDF regeneration",String(e).slice(0,140));
      await env.DB.prepare(
        "UPDATE student_applications SET document_last_error=? WHERE id=? AND staff_id=?"
-     ).bind("Updated document processing pending. Check Apps Script V5 deployment.",row.id,staff.id).run().catch(()=>{});
+     ).bind("Updated document processing pending. Check Apps Script V6 deployment.",row.id,staff.id).run().catch(()=>{});
      return json({...receipt(fresh),
-       notice:"Correction saved with the same number. Updated PDF/Sheet is pending; use Retry Processing after Apps Script V5 is deployed."},202);
+       notice:"Correction saved in the database with the same number. Updated PDF/Sheet is pending; check Apps Script V6 and use Retry Processing."},202);
    }
   }
   if(path==="/api/staff/application/pdf-download"){
