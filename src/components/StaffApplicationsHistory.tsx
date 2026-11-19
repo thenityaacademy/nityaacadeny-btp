@@ -11,8 +11,10 @@ type Course={id:string;name:string;active:boolean};
 type Detail={recordId:string;number:string;kind:"admission"|"scholarship";fields:Record<string,string>;revisionNumber:number;hidden:boolean};
 const api=async(path:string,init?:RequestInit)=>{
  const response=await fetch(path,{credentials:"include",cache:"no-store",...init});
- const data=await response.json().catch(()=>({}));
- if(!response.ok)throw Error(data.error||"Could not manage this submitted form.");
+ const data=await response.json().catch(()=>null);
+ if(!response.ok)throw Error(data?.error||`Server rejected the request (HTTP ${response.status}). Please refresh and retry.`);
+ if(!data||typeof data!=="object")throw Error("Server returned an unexpected response. The change has not been confirmed; reopen this form before retrying.");
+ if(data.success===false)throw Error(data.error||"The server did not confirm saving this form.");
  return data;
 };
 const post=(body:unknown):RequestInit=>({
@@ -134,6 +136,8 @@ export default function StaffApplicationsHistory({kind,courses=[]}:{kind:"admiss
    const result=await api("/api/staff/application/update",post({
     recordId:editing.recordId,revisionNumber:editing.revisionNumber,changes
    }));
+   if(result.success!==true||typeof result.revisionNumber!=="number"||result.revisionNumber<=editing.revisionNumber)
+    throw Error("The server did not confirm a new revision. Please reopen the form before trying again.");
    setEditing(null);
    setNotice(result.notice||"Corrections saved using the original form number.");
    await reload();
@@ -318,6 +322,8 @@ export default function StaffApplicationsHistory({kind,courses=[]}:{kind:"admiss
     <p className="text-sm rounded-lg bg-blue-50 p-3 text-blue-900">
      Save corrections only. Private PDF will be regenerated and the existing Google Sheet row updated (or marked for retry). Check sensitive details carefully before saving.
     </p>
+    {error&&<p role="alert" aria-live="assertive" className="text-sm rounded-lg border border-red-300 bg-red-50 p-3 text-red-900">Save failed: {error}</p>}
+    {notice&&<p role="status" className="text-sm rounded-lg border border-green-300 bg-green-50 p-3 text-green-900">{notice}</p>}
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
      {editingKeys.map(renderInput)}
     </div>
