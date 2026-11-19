@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, RefreshCw, MessageCircle, FileClock, Pencil, Archive, RotateCcw, X, Save, ImageUp } from "lucide-react";
 import { downloadStaffPdf, fetchStaffPdfFile, canShareStaffPdf, sharePreparedStaffPdf } from "../lib/staffPdfDownload";
+import type { ExtraField } from "../data/staffFormEditor";
 
 type Application={
  id:string;kind:"admission"|"scholarship";form_number:string;student_name:string;mobile:string;
@@ -8,7 +9,7 @@ type Application={
  revision_number:number;revised_at:string|null;staff_hidden_at:string|null;
 };
 type Course={id:string;name:string;active:boolean};
-type Detail={recordId:string;number:string;kind:"admission"|"scholarship";fields:Record<string,string>;revisionNumber:number;hidden:boolean};
+type Detail={recordId:string;number:string;kind:"admission"|"scholarship";fields:Record<string,string>;extras:ExtraField[];revisionNumber:number;hidden:boolean};
 const api=async(path:string,init?:RequestInit)=>{
  const response=await fetch(path,{credentials:"include",cache:"no-store",...init});
  const data=await response.json().catch(()=>null);
@@ -120,12 +121,19 @@ export default function StaffApplicationsHistory({kind,courses=[]}:{kind:"admiss
   try{
    const data=await api("/api/staff/application/details",post({recordId:row.id})) as Detail;
    if(data.hidden)throw Error("Restore this removed form before editing.");
-   setEditing(data);setEditFields({...data.fields});
+   setEditing(data);
+   // Older submitted forms may not contain Admin-added custom fields.
+   const missingExtras=Object.fromEntries((data.extras||[])
+    .filter(extra=>!Object.prototype.hasOwnProperty.call(data.fields,extra.id))
+    .map(extra=>[extra.id,""]));
+   setEditFields({...data.fields,...missingExtras});
   }catch(e){setError(e instanceof Error?e.message:"Could not load this form.");}
   finally{setBusy("");}
  };
  const saveEdit=async()=>{
   if(!editing||busy)return;
+  const missingExtra=(editing.extras||[]).find(extra=>extra.required&&!editFields[extra.id]?.trim());
+  if(missingExtra){setError(missingExtra.label+" is required. Select or enter a value below before saving.");return;}
   const changes:Record<string,string>={};
   for(const [key,value] of Object.entries(editFields))
    if(!systemKeys.has(key)&&(editing.fields[key]||"")!==value)changes[key]=value;
@@ -198,18 +206,21 @@ export default function StaffApplicationsHistory({kind,courses=[]}:{kind:"admiss
   return [...orderedKeys.filter(k=>keys.includes(k)),...keys.filter(k=>!orderedKeys.includes(k))];
  },[editFields,editing]);
  const renderInput=(key:string)=>{
-  const opts=key==="course"?courses.filter(c=>c.active).map(c=>({value:c.id,label:c.name})):choice[key];
+  const extra=editing?.extras?.find(x=>x.id===key);
+  const opts=extra?.type==="select"
+   ?extra.options.map(value=>({value,label:value}))
+   :key==="course"?courses.filter(c=>c.active).map(c=>({value:c.id,label:c.name})):choice[key];
   const value=editFields[key]||"";
   const common="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 bg-white text-sm";
   return <label key={key} className="block text-sm font-medium text-slate-700">
-   {labels[key]||key}
+   {extra?.label||labels[key]||key}{extra?.required?" *":""}
    {opts?<select value={value} onChange={e=>setEditFields(p=>({...p,[key]:e.target.value}))}
      className={common}>
       {!opts.some(x=>x.value===value)&&<option value={value}>{value||"Select"}</option>}
       {opts.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}
      </select>:longFields.has(key)?<textarea value={value} rows={2} maxLength={700}
      onChange={e=>setEditFields(p=>({...p,[key]:e.target.value}))} className={common}/>:
-     <input type={key==="dob"||key==="examDate"?"date":"text"}
+     <input type={extra?.type==="date"||extra?.type==="number"?extra.type:key==="dob"||key==="examDate"?"date":"text"}
       value={value} maxLength={key==="aadhaar"?12:["mobile","whatsapp"].includes(key)?10:key==="pin"?6:500}
       inputMode={digits.has(key)?"numeric":undefined}
       onChange={e=>setEditFields(p=>({...p,[key]:digits.has(key)?e.target.value.replace(/\D/g,""):e.target.value}))}

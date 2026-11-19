@@ -254,10 +254,20 @@ export async function handleStaffApplication(request:Request,env:WorkflowEnv,sta
    if(!isString(body.recordId)||!idRE.test(body.recordId))return bad("Invalid form reference",400);
    const row=await ownedApplication(env,staff,body.recordId);
    if(!row)return bad("Form not found",404);
+   // Older records may predate newly required custom form fields.
+   // Read their current definitions without modifying the stored application.
+   const editorRow=await env.DB.prepare(
+     "SELECT setting_value FROM portal_settings WHERE setting_key='formEditor'"
+   ).first<{setting_value:string}>();
+   let editor=defaultFormEditor();
+   if(editorRow?.setting_value){
+    try{editor=sanitizeFormEditor(JSON.parse(editorRow.setting_value));}
+    catch{return bad("Admin form settings need correction before editing forms",503);}
+   }
    return json({recordId:row.id,number:row.form_number,kind:row.kind,
-     fields:JSON.parse(row.fields_json),revisionNumber:row.revision_number,
-     hidden:!!row.staff_hidden_at,documentStatus:row.document_status,
-     sheetStatus:row.sheet_sync_status});
+     fields:JSON.parse(row.fields_json),extras:editor[row.kind].extras,
+     revisionNumber:row.revision_number,hidden:!!row.staff_hidden_at,
+     documentStatus:row.document_status,sheetStatus:row.sheet_sync_status});
   }
   if(path==="/api/staff/application/hide"||path==="/api/staff/application/restore"){
    if(!isString(body.recordId)||!idRE.test(body.recordId))return bad("Invalid form reference",400);
